@@ -2,8 +2,66 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import dgl
 import json
+from dataclasses import dataclass
+
+from pathlib import Path
+from typing import List, Optional, Dict
 
 graph_dir='/home/ngan/Documents/SamVulDetection/dataset/megavul/megavul_graph/' 
+
+@dataclass
+class MegaVulFunction:
+    cve_id: str
+    cwe_ids: List[str]
+    cvss_vector: Optional[str]
+    cvss_base_score: Optional[float]
+    cvss_base_severity: Optional[str]
+    cvss_is_v3: Optional[bool]
+    publish_date: str
+
+    repo_name: str
+    commit_msg: str
+    commit_hash: str
+    parent_commit_hash: str
+    commit_date: int
+    git_url: str
+
+    file_path: str
+    func_name: str
+    parameter_list_signature_before: Optional[str]
+    parameter_list_before: Optional[List[str]]
+    return_type_before: Optional[str]
+    func_before: Optional[str]
+    abstract_func_before: Optional[str]
+    abstract_symbol_table_before: Optional[Dict[str, str]]
+    func_graph_path_before: Optional[str]
+
+    parameter_list_signature: str
+    parameter_list: List[str]
+    return_type: str
+    func: str
+    abstract_func: str
+    abstract_symbol_table: Dict[str, str]
+    func_graph_path: Optional[str]
+
+    diff_func: Optional[str]
+    diff_line_info: Optional[Dict[str, List[int]]]  # [deleted_lines, added_lines]
+
+    is_vul: bool
+class InputFeatures(object):
+    """A single training/test features for an example."""
+    def __init__(self,
+                 sequence_tokens=None,
+                 sequence_ids=None,
+                 graph_features=None,
+                 idx=None,
+                 label=None):
+        self.sequence_tokens = sequence_tokens  # Tokens for sequence data
+        self.sequence_ids = sequence_ids        # Token IDs for sequence data
+        self.graph_features = graph_features    # Features for graph data
+        self.idx = str(idx)                     # Unique identifier
+        self.label = label                      # Label for classification
+
 
 def create_graph_from_json(data_item):
     # print('data_item')
@@ -83,18 +141,52 @@ def create_graph_from_json(data_item):
     else:
         # Handle the case where func_graph_path is None
         return None
+def convert_examples_to_features(js, tokenizer, args):
+    # Function to process sequence data and return tokens, ids
+    code = js['func']
+
+    code_tokens = tokenizer.tokenize(code)
+    source_tokens = code_tokens[:args.block_size]
+    # if args.model_type in ["codegen"]:
+        # code_tokens = tokenizer.tokenize(code)
+        # source_tokens = code_tokens[:args.block_size]
+    # elif args.model_type in ["starcoder"]:
+    #     code_tokens = tokenizer.tokenize(code)
+    #     source_tokens = code_tokens[:args.block_size]
+    # else:
+    #     code_tokens = tokenizer.tokenize(code)
+    #     source_tokens = [tokenizer.cls_token] + code_tokens[:args.block_size-2] + [tokenizer.sep_token]
+
+    source_ids = tokenizer.convert_tokens_to_ids(source_tokens)
+    padding_length = args.block_size - len(source_ids)
+    source_ids += [tokenizer.pad_token_id] * padding_length
+
+    return InputFeatures(sequence_tokens=source_tokens,
+                         sequence_ids=source_ids,
+                         idx=js['idx'],
+                         label=js['target'])
 
 
 class MegaVulDataset(Dataset):
-    def __init__(self, data, labels):
+    def __init__(self, data, tokenizer, args):
         self.data = data
-        self.labels = labels
-        self.graphs = [create_graph_from_json(item) for item in self.data]
+        self.tokenizer = tokenizer
+        self.args = args
 
     def __len__(self):
-        return len(self.graphs)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        graph = self.graphs[idx]
-        label = self.labels[idx]
-        return {'graph': graph, 'label': torch.tensor(label, dtype=torch.float32)}
+        item = self.data[idx]
+
+        # Sequence input processing
+        sequence_features = convert_examples_to_features(item['sequence_data'], self.tokenizer, self.args)
+        # Graph input processing
+        graph_features = self.create_graph_from_json(item['graph_data'])
+        
+        return {
+            'sequence_ids': sequence_features.input_ids,
+            'attention_mask': sequence_features.attention_mask,
+            'graph_features': graph_features,
+            'label': self.labels[idx]
+        }

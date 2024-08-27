@@ -2,39 +2,25 @@ import torch.nn as nn
 import torch
 
 class CombinedModel(nn.Module):
-    def __init__(self, clr_model, devign_model, combined_output_dim=128):
+    def __init__(self, clr_model, devign_model):
         super(CombinedModel, self).__init__()
         self.clr_model = clr_model
         self.devign_model = devign_model
+        self.fc = nn.Linear(clr_model.config.hidden_size + devign_model.output_size, 1)  # Điều chỉnh kích thước đầu ra nếu cần (num_classes=1)
 
-        # CLR and DevignModel output dimensions
-        clr_output_dim = clr_model.config.hidden_size
-        devign_output_dim = devign_model.concat_dim
-
-        self.combined_output_dim = combined_output_dim
-
-        # Linear layer to combine the features
-        self.fc1 = nn.Linear(clr_output_dim + devign_output_dim, combined_output_dim)
-        self.fc2 = nn.Linear(combined_output_dim, 1)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, input_ids=None, attention_mask=None, g=None, dataset=None, labels=None, weight=None):
-        # Get CLR model features
-        clr_loss, clr_probs, clr_features = self.clr_model(input_ids, attention_mask, labels)
-
-        # Get Devign model features
-        devign_result, devign_avg, devign_features = self.devign_model(g, dataset)
-
-        # Combine the features
-        combined_features = torch.cat((clr_features, devign_features), dim=1)
-
-        # Pass through additional layers
-        x = F.relu(self.fc1(combined_features))
-        logits = self.fc2(x)
-        prob = self.sigmoid(logits).squeeze(dim=-1)
-
-        if labels is not None:
-            loss = F.binary_cross_entropy(prob, labels.float(), weight=weight)
-            return loss, prob
-        else:
-            return prob
+    def forward(self, sequence_inputs, graph_inputs, attention_mask=None, labels=None):
+        # Get sequence outputs from CLRModel
+        sequence_logits = self.clr_model(sequence_inputs, attention_mask=attention_mask)
+        
+        # Get graph outputs from DevignModel
+        graph_logits = self.devign_model(graph_inputs)
+        
+        # Combine the outputs
+        combined_output = torch.cat((sequence_logits, graph_logits), dim=1)
+        logits = self.fc(combined_output)
+        
+        # if labels is not None:
+        #     loss_fct = nn.CrossEntropyLoss()
+        #     loss = loss_fct(logits.view(-1, self.config.num_labels), labels.view(-1))
+        #     return loss, logits
+        return logits
