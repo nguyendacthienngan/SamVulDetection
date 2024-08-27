@@ -3,7 +3,7 @@ from torch.utils.data import Dataset, DataLoader
 import dgl
 import json
 
-graph_dir='/home/ngan/Documents/code/dataset/megavul/megavul_graph/' 
+graph_dir='/home/ngan/Documents/SamVulDetection/dataset/megavul/megavul_graph/' 
 
 def create_graph_from_json(data_item):
     # print('data_item')

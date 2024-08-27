@@ -125,7 +125,7 @@ def collate_fn(batch):
 
 # Main code
 # Example usage
-json_file = "/home/ngan/Documents/code/dataset/megavul-001.json"
+json_file = "/home/ngan/Documents/SamVulDetection/dataset/megavul-001.json"
 # data = load_megavul_data(json_file)
 # sequence_data, graph_data, labels = extract_data_for_training(data)
 

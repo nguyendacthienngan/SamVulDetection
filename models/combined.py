@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 
 class CombinedModel(nn.Module):
     def __init__(self, clr_model, devign_model, combined_output_dim=128):
