@@ -168,11 +168,11 @@ def convert_examples_to_features(js, tokenizer, args):
 
 
 class MegaVulDataset(Dataset):
-    def __init__(self, data, tokenizer, args):
+    def __init__(self, data, labels, tokenizer, args):
         self.data = data
+        self.labels = labels
         self.tokenizer = tokenizer
         self.args = args
-
     def __len__(self):
         return len(self.data)
 
