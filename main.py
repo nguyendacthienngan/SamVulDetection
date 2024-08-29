@@ -24,22 +24,75 @@ def load_and_split_data(json_file_path):
 
     return train_data, val_data, test_data, train_labels, val_labels, test_labels
 
+import dgl
 
 def collate_fn(batch):
-    graphs = [item['graph'] for item in batch]
+    # Tách các phần tử của batch
+    sequence_ids = [torch.tensor(item['sequence_ids']) for item in batch]
+    attention_masks = [torch.tensor(item['attention_mask']) for item in batch]
+    # attention_masks = [torch.tensor(item['attention_mask']) if item['attention_mask'] is not None else torch.ones_like(sequence_ids[0]) for item in batch]
+    graph_features = [item['graph_features'] for item in batch]
     labels = [item['label'] for item in batch]
-    # Process the graphs and labels as needed for your model
-    # Example: padding graphs if necessary
-    return {'graph': graphs, 'label': torch.stack(labels)}
+
+    # Chuyển đổi các dữ liệu sequence thành tensor
+    sequence_ids_tensor = torch.stack(sequence_ids)
+    attention_masks_tensor = torch.stack(attention_masks)
+    labels_tensor = torch.tensor(labels)
+
+    # Determine the maximum size of the graph matrices
+    max_size = max(
+        (gf.size(0) if gf is not None else 0)
+        for gf in graph_features
+    )
+
+    # Process graph features
+    # Pad or truncate graph features
+    # graph_features_tensor = []
+    # for gf in graph_features:
+    #     if gf is None:
+    #         # Create a default tensor with the max size
+    #         default_graph_tensor = torch.zeros((max_size, max_size))
+    #         graph_features_tensor.append(default_graph_tensor)
+    #     else:
+    #         size = gf.size(0)
+    #         if size < max_size:
+    #             # Pad the matrix
+    #             padded_matrix = torch.zeros((max_size, max_size))
+    #             padded_matrix[:size, :size] = gf
+    #             graph_features_tensor.append(padded_matrix)
+    #         elif size > max_size:
+    #             # Truncate the matrix
+    #             truncated_matrix = gf[:max_size, :max_size]
+    #             graph_features_tensor.append(truncated_matrix)
+    #         else:
+    #             graph_features_tensor.append(gf)
+
+    # graph_features_tensor = torch.stack(graph_features_tensor)
+    graph_features_tensor = dgl.batch(graph_features)  # Use DGL's batch function
+    return {
+        'sequence_ids': sequence_ids_tensor,
+        'attention_mask': attention_masks_tensor,
+        'graph_features': graph_features_tensor,
+        'label': labels_tensor
+    }
+
 def train(args, device, train_loader, val_loader, model, optimizer, loss_function):
     model.train()
     
-    for epoch in range(args.num_epochs):
+    for epoch in range(args['epoch']):
         total_loss = 0.0
         
         for batch in train_loader:
-            sequence_inputs, attention_mask, graph_inputs, labels = batch
-            
+            sequence_inputs = batch['sequence_ids']
+            attention_mask = batch['attention_mask']
+            graph_inputs = batch['graph_features']
+            labels = batch['label']
+            # Debugging: Check shapes
+            print(f"sequence_inputs shape: {sequence_inputs.shape}")
+            print(f"attention_mask shape: {attention_mask.shape}")
+            print(f"graph_inputs shape: {graph_inputs.shape}")
+            print(f"labels shape: {labels.shape}")
+
             # Chuyển dữ liệu sang device
             sequence_inputs = sequence_inputs.to(device)
             attention_mask = attention_mask.to(device)
@@ -60,7 +113,7 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             total_loss += loss.item()
         
         avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch + 1}/{args.num_epochs}, Loss: {avg_loss:.4f}")
+        print(f"Epoch {epoch + 1}/{args['epoch']}, Loss: {avg_loss:.4f}")
         
         # Đánh giá mô hình trên validation set
         evaluate(args, device, val_loader, model)
@@ -113,27 +166,28 @@ print("extract_data_for_training sucessfully")
 
 # Update to include tokenizer and args
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
-args = {
+data_args = {
     'model_type': 'codegen',  # Or your specific model type
-    'block_size': 512  # Example block size
+    'block_size': 128,  # Example block size
+    'max_graph_size': 128
 }
 
-train_dataset = MegaVulDataset(train_data, train_labels, tokenizer, args)
-val_dataset = MegaVulDataset(val_data, val_labels, tokenizer, args)
-test_dataset = MegaVulDataset(test_data, test_labels, tokenizer, args)
+train_dataset = MegaVulDataset(train_data, train_labels, tokenizer, data_args)
+val_dataset = MegaVulDataset(val_data, val_labels, tokenizer, data_args)
+test_dataset = MegaVulDataset(test_data, test_labels, tokenizer, data_args)
 
 
 # Create DataLoaders
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=collate_fn)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, collate_fn=collate_fn)
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, collate_fn=collate_fn)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False, collate_fn=collate_fn)
 print("Create DataLoaders")
 
 
 # Assuming you have already split your data as shown in the previous steps
 
 # Initialize the model
-clr_model = CLRModel(model_name='roberta-base', num_labels=2)
+clr_model = CLRModel(num_labels=2)
 devign_model = DevignModel(input_dim=100, output_dim=128)  # Adjust dimensions based on your data
 combined_model = CombinedModel(clr_model, devign_model)
 
@@ -207,8 +261,7 @@ args = {
 # Initialize DataLoader, model, optimizer, and loss function
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 combined_model.to(device)
-
-optimizer = torch.optim.Adam(combined_model.parameters(), lr=args.learning_rate)
+optimizer = torch.optim.Adam(combined_model.parameters(), lr=args['learning_rate'])
 loss_function = nn.BCEWithLogitsLoss()
 
 # Call train function

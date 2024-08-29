@@ -7,7 +7,7 @@ class DevignModel(nn.Module):
     def __init__(self, input_dim, output_dim, max_edge_types=3, num_steps=6):
         super(DevignModel, self).__init__()
         self.inp_dim = input_dim
-        self.out_dim = output_dim
+        self.output_dim = output_dim
         self.max_edge_types = max_edge_types
         self.num_timesteps = num_steps
         self.ggnn = GatedGraphConv(in_feats=input_dim, out_feats=output_dim,
@@ -27,14 +27,14 @@ class DevignModel(nn.Module):
         self.mlp_y = nn.Linear(in_features=output_dim, out_features=1)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, g, dataset, cuda=False):
-        features = g.ndata['_WORD2VEC']
-        edge_types = g.edata["_ETYPE"]
-        outputs = self.ggnn(g, features, edge_types)
+    def forward(self, g_batch, cuda=False):
+        features = g_batch.ndata['_WORD2VEC']
+        edge_types = g_batch.edata["_ETYPE"]
+        outputs = self.ggnn(g_batch, features, edge_types)
 
-        g.ndata['GGNNOUTPUT'] = outputs
+        g_batch.ndata['GGNNOUTPUT'] = outputs
 
-        x_i, h_i = self.unbatch_features(g)
+        x_i, h_i = self.unbatch_features(g_batch)
         x_i = torch.stack(x_i)
         h_i = torch.stack(h_i)
         c_i = torch.cat((h_i, x_i), dim=-1)
@@ -63,6 +63,7 @@ class DevignModel(nn.Module):
         temp = torch.cat((Y_2.sum(1), Z_2.sum(1)), 1)
         result = self.sigmoid(avg).squeeze(dim=-1)
         return result, avg, temp
+
 
     def unbatch_features(self, g):
         x_i = []

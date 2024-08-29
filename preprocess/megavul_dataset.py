@@ -55,12 +55,14 @@ class InputFeatures(object):
                  sequence_ids=None,
                  graph_features=None,
                  idx=None,
-                 label=None):
+                 label=None,
+                 attention_mask=None):
         self.sequence_tokens = sequence_tokens  # Tokens for sequence data
         self.sequence_ids = sequence_ids        # Token IDs for sequence data
         self.graph_features = graph_features    # Features for graph data
         self.idx = str(idx)                     # Unique identifier
         self.label = label                      # Label for classification
+        self.attention_mask =attention_mask
 
 
 def create_graph_from_json(data_item):
@@ -141,12 +143,57 @@ def create_graph_from_json(data_item):
     else:
         # Handle the case where func_graph_path is None
         return None
-def convert_examples_to_features(js, tokenizer, args):
+# def pad_graph_features(graph_features, max_size):
+#     padded_graphs = []
+#     for g in graph_features:
+#         size = g.size(0)  # Assuming square matrices for simplicity
+#         if size < max_size:
+#             # Pad the graph with zeros
+#             padded_graph = torch.zeros((max_size, max_size))
+#             padded_graph[:size, :size] = g
+#             padded_graphs.append(padded_graph)
+#         else:
+#             # Truncate the graph
+#             padded_graph = g[:max_size, :max_size]
+#             padded_graphs.append(padded_graph)
+#     return torch.stack(padded_graphs)
+
+def pad_graph_features(graph, max_size):
+    """
+    Pad the adjacency matrix of a DGL graph to a specified size.
+
+    Args:
+        graph (dgl.DGLGraph): A single DGL graph object.
+        max_size (int): The maximum size for padding/truncating.
+
+    Returns:
+        torch.Tensor: Padded adjacency matrix of the graph.
+    """
+    # Get the adjacency matrix of the graph in scipy's coo format
+    adj = graph.adjacency_matrix(scipy_fmt="coo")
+    
+    # Convert the adjacency matrix to a dense PyTorch tensor
+    adj_dense = torch.tensor(adj.toarray(), dtype=torch.float32)
+
+    # Get the current size of the adjacency matrix
+    size = adj_dense.shape[0]
+
+    if size < max_size:
+        # Pad the adjacency matrix with zeros
+        padded_adj = torch.zeros((max_size, max_size), dtype=torch.float32)
+        padded_adj[:size, :size] = adj_dense
+    else:
+        # Truncate the adjacency matrix
+        padded_adj = adj_dense[:max_size, :max_size]
+
+    return padded_adj
+
+def convert_examples_to_features(js, tokenizer, args, idx, label):
     # Function to process sequence data and return tokens, ids
     code = js['func']
 
     code_tokens = tokenizer.tokenize(code)
-    source_tokens = code_tokens[:args.block_size]
+    source_tokens = code_tokens[:args['block_size']]
     # if args.model_type in ["codegen"]:
         # code_tokens = tokenizer.tokenize(code)
         # source_tokens = code_tokens[:args.block_size]
@@ -157,14 +204,18 @@ def convert_examples_to_features(js, tokenizer, args):
     #     code_tokens = tokenizer.tokenize(code)
     #     source_tokens = [tokenizer.cls_token] + code_tokens[:args.block_size-2] + [tokenizer.sep_token]
 
-    source_ids = tokenizer.convert_tokens_to_ids(source_tokens)
-    padding_length = args.block_size - len(source_ids)
-    source_ids += [tokenizer.pad_token_id] * padding_length
+    input_ids = tokenizer.convert_tokens_to_ids(source_tokens)
+    # Create attention mask: 1 for real tokens and 0 for padding tokens
+    attention_mask = [1] * len(input_ids)
+    padding_length = args['block_size'] - len(input_ids)
+    input_ids += [tokenizer.pad_token_id] * padding_length
+    attention_mask += [0] * padding_length  # Pad the attention mask with 0s
 
     return InputFeatures(sequence_tokens=source_tokens,
-                         sequence_ids=source_ids,
-                         idx=js['idx'],
-                         label=js['target'])
+                         sequence_ids=input_ids,
+                         attention_mask=attention_mask,  # Add the attention mask here
+                         idx=idx,
+                         label=label)
 
 
 class MegaVulDataset(Dataset):
@@ -173,20 +224,27 @@ class MegaVulDataset(Dataset):
         self.labels = labels
         self.tokenizer = tokenizer
         self.args = args
+        self.max_graph_size = args['max_graph_size']  # Set this to a fixed size
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         item = self.data[idx]
+        label = self.labels[idx]
 
         # Sequence input processing
-        sequence_features = convert_examples_to_features(item['sequence_data'], self.tokenizer, self.args)
+        sequence_features = convert_examples_to_features(item, self.tokenizer, self.args, idx, label)
         # Graph input processing
-        graph_features = self.create_graph_from_json(item['graph_data'])
-        
+        graph_features = create_graph_from_json(item)
+        if graph_features is not None:
+            padded_graph_features = pad_graph_features(graph_features, self.max_graph_size)
+        else:
+            # Create a placeholder tensor filled with zeros if graph_features is None
+            padded_graph_features = torch.zeros(self.max_graph_size, self.max_graph_size)
+
         return {
-            'sequence_ids': sequence_features.input_ids,
+            'sequence_ids': sequence_features.sequence_ids,
             'attention_mask': sequence_features.attention_mask,
-            'graph_features': graph_features,
-            'label': self.labels[idx]
+            'graph_features': padded_graph_features,
+            'label': label
         }
