@@ -2,42 +2,58 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dgl.nn.pytorch import GatedGraphConv
+import dgl
 
 class DevignModel(nn.Module):
-    def __init__(self, input_dim, output_dim, max_edge_types=3, num_steps=6):
+    def __init__(self, input_dim=None, output_dim=None, max_edge_types=6, num_steps=6):
         super(DevignModel, self).__init__()
         self.inp_dim = input_dim
         self.output_dim = output_dim
         self.max_edge_types = max_edge_types
         self.num_timesteps = num_steps
+        
         self.ggnn = GatedGraphConv(in_feats=input_dim, out_feats=output_dim,
                                    n_steps=num_steps, n_etypes=max_edge_types)
         self.conv_l1 = nn.Conv1d(output_dim, output_dim, 3)
         self.maxpool1 = nn.MaxPool1d(3, stride=2)
+        
         self.conv_l2 = nn.Conv1d(output_dim, output_dim, 1)
         self.maxpool2 = nn.MaxPool1d(2, stride=2)
 
-        self.concat_dim = input_dim + output_dim
+        self.concat_dim = input_dim + output_dim  # 100 + 128 = 228
         self.conv_l1_for_concat = nn.Conv1d(self.concat_dim, self.concat_dim, 3)
         self.maxpool1_for_concat = nn.MaxPool1d(3, stride=2)
         self.conv_l2_for_concat = nn.Conv1d(self.concat_dim, self.concat_dim, 1)
         self.maxpool2_for_concat = nn.MaxPool1d(2, stride=2)
-
+        
+        # Adjust the input dimension of the linear layer to match c_i
+        # self.fc = nn.Linear(129, 128)  # Giả sử 129 là số lượng đặc trưng đầu vào và 128 là số lượng đặc trưng đầu ra mong muốn.
+       
         self.mlp_z = nn.Linear(in_features=self.concat_dim, out_features=1)
         self.mlp_y = nn.Linear(in_features=output_dim, out_features=1)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, g_batch, cuda=False):
-        features = g_batch.ndata['_WORD2VEC']
-        edge_types = g_batch.edata["_ETYPE"]
-        outputs = self.ggnn(g_batch, features, edge_types)
+        features = g_batch.ndata['type']  # Use 'type' as the feature input
+        edge_types = g_batch.edata['label']  # Use 'label' as edge type
+        print("Features shape:", features.shape)
+        print("Edge types shape:", edge_types.shape)
 
+        outputs = self.ggnn(g_batch, features, edge_types)
         g_batch.ndata['GGNNOUTPUT'] = outputs
 
         x_i, h_i = self.unbatch_features(g_batch)
         x_i = torch.stack(x_i)
         h_i = torch.stack(h_i)
         c_i = torch.cat((h_i, x_i), dim=-1)
+        # print(f'before adjust ${c_i.shape}') 
+
+        # Ensure the input to the convolution layers has the correct number of channels
+        # if c_i.size(1) != self.concat_dim:
+            # self.fc = nn.Linear(in_features=c_i.size(1), out_features=self.concat_dim)  # Adjust size
+        # c_i = self.fc(c_i)  # Adjust the feature dimensions as needed
+
+
         Y_1 = self.maxpool1(
             F.relu(
                 self.conv_l1(h_i.transpose(1, 2))
@@ -58,19 +74,20 @@ class DevignModel(nn.Module):
                 self.conv_l2_for_concat(Z_1)
             )
         ).transpose(1, 2)
+        
         before_avg = torch.mul(self.mlp_y(Y_2), self.mlp_z(Z_2))
         avg = before_avg.mean(dim=1)
         temp = torch.cat((Y_2.sum(1), Z_2.sum(1)), 1)
         result = self.sigmoid(avg).squeeze(dim=-1)
+        
         return result, avg, temp
-
 
     def unbatch_features(self, g):
         x_i = []
         h_i = []
         max_len = -1
         for g_i in dgl.unbatch(g):
-            x_i.append(g_i.ndata['_WORD2VEC'])
+            x_i.append(g_i.ndata['type'])
             h_i.append(g_i.ndata['GGNNOUTPUT'])
             max_len = max(g_i.number_of_nodes(), max_len)
         for i, (v, k) in enumerate(zip(x_i, h_i)):

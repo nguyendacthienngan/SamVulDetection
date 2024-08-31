@@ -94,51 +94,84 @@ def create_graph_from_json(data_item):
         with open(func_graph_path, 'r') as f:
             graph_data = json.load(f)
         
-        # Process the loaded graph data to create DGL graph
-        # Example structure of graph_data
-        # {
-        #     'nodes': {'node_ids': [0, 1, 2], 'node_features': [[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]]},
-        #     'edges': {'src': [0, 1], 'dst': [1, 2]}
-        # }
-        
-        # nodes = graph_data.get('nodes', {})
-        # edges = graph_data.get('edges', {})
-        nodes, edges = graph_data['nodes'] , graph_data['edges']
-        #print(nodes)    # [{'version': '0.1', 'language': 'NEWC', '_label': 'META_DATA', 'overlays': ....
-        #print(edges)    # [{'innode': 196, 'outnode': 2, 'etype': 'AST', 'variable': None}, ...]
-
+        nodes = graph_data.get('nodes', [])
+        edges = graph_data.get('edges', [])
+        # print(f'edges: {edges}')
         # Tạo danh sách các node id và edge connections
-        node_ids = [node['id'] for node in nodes]
         edge_tuples = [(edge['inNode'], edge['outNode']) for edge in edges]
 
         # Tạo đồ thị với DGL
         g = dgl.graph(edge_tuples)
 
+        # Debug: Check number of nodes in the graph
+        print(f"Number of nodes in the graph---(edge_tuples): {g.num_nodes()}")
+        print(f"Number of nodes len(nodes): {len(nodes)}")
+        
         # Thêm đặc trưng cho các nodes
         # Ví dụ: chỉ sử dụng 'typeFullName' và 'code' như là đặc trưng của các nodes
         node_features = []
         for node in nodes:
             features = {
-                'type': node.get('typeFullName', 'unknown'),
+                # 'type': node.get('typeFullName', 'unknown'),
+                'type': node.get('_label', 'unknown'),  # Adapt _label to type feature
                 'code': node.get('code', ''),
                 'name': node.get('name', ''),
                 'language': node.get('language', '')
                 # Thêm các đặc trưng khác nếu cần
             }
             node_features.append(features)
+        
+        # Debug: Check number of nodes in the graph
+        print(f"Number of nodes in the graph: after add nodes {g.num_nodes()}")
+        
+        print(f"g.num_nodes() {g.num_nodes()}")
+        print(f"len(node_features) {len(node_features)}")
 
-        if (len(node_features) == g.num_nodes()):
-            'Match between nodes ({g.num_nodes()}) and features ({len(node_features)})'
-            # Bạn có thể thêm các đặc trưng khác như tensors (giả sử dùng nhúng (embeddings))
-            # Sử dụng các đặc trưng đơn giản như sau (ở đây chuyển đổi string thành embedding có thể là phức tạp hơn tùy theo yêu cầu của bạn):
-            g.ndata['type'] = torch.tensor([hash(f['type']) % 1000 for f in node_features], dtype=torch.float32)
-            g.ndata['code'] = torch.tensor([hash(f['code']) % 1000 for f in node_features], dtype=torch.float32)
-            g.ndata['name'] = torch.tensor([hash(f['name']) % 1000 for f in node_features], dtype=torch.float32)
-            g.ndata['language'] = torch.tensor([hash(f['language']) % 1000 for f in node_features], dtype=torch.float32)
+        # Ensure node features match number of nodes
+        if len(node_features) < g.num_nodes():
+            missing_count = g.num_nodes() - len(node_features)
+            placeholder_features = {
+                'type': 'unknown',
+                'code': '',
+                'name': '',
+                'language': ''
+            }
+            for _ in range(missing_count):
+                node_features.append(placeholder_features)
 
-        # Bạn cũng có thể thêm đặc trưng cho các edges nếu cần
-        edge_labels = [edge.get('label', 'unknown') for edge in edges]
-        g.edata['label'] = torch.tensor([hash(label) % 1000 for label in edge_labels], dtype=torch.float32)
+
+        if len(node_features) == g.num_nodes():
+            print(f'len(node_features) == g.num_nodes()')
+            type_feature = torch.tensor([hash(f['type']) % 1000 for f in node_features], dtype=torch.float32)
+            # Thêm một chiều mới để tạo tensor 2D với kích thước [num_nodes, 1]
+            type_feature_2d = type_feature.unsqueeze(1)  # hoặc type_feature.view(-1, 1)
+            g.ndata['type'] = type_feature_2d
+
+            # code_feature = torch.tensor([hash(f['code']) % 1000 for f in node_features], dtype=torch.float32)
+            # name_feature = torch.tensor([hash(f['name']) % 1000 for f in node_features], dtype=torch.float32)
+            # language_feature = torch.tensor([hash(f['language']) % 1000 for f in node_features], dtype=torch.float32)
+
+            # g.ndata['code'] = code_feature
+            # g.ndata['name'] = name_feature
+            # g.ndata['language'] = language_feature
+        else:
+            raise ValueError("Mismatch between the number of nodes and node features")
+
+        # Map edge types
+        edge_labels = [edge.get('etype', 'unknown') for edge in edges]
+        # print(f"edge_labels {edge_labels}")
+        edge_type_mapping = {
+            'AST': 0,
+            'CDG': 1,
+            'CFG': 2,
+            'REACHING_DEF': 3,
+            'CALL': 4,
+            'OTHER': 5
+        }
+        edge_types = [edge_type_mapping.get(label, edge_type_mapping['OTHER']) for label in edge_labels] #Embedding Layer
+        # Ensure edge types are within the valid range
+        g.edata['label'] = torch.tensor(edge_types, dtype=torch.long)
+
         return g
     else:
         # Handle the case where func_graph_path is None
@@ -231,6 +264,8 @@ class MegaVulDataset(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         label = self.labels[idx]
+        # Convert boolean label to integer
+        label = int(label)  # Convert True/False to 1/0
 
         # Sequence input processing
         sequence_features = convert_examples_to_features(item, self.tokenizer, self.args, idx, label)
@@ -245,6 +280,6 @@ class MegaVulDataset(Dataset):
         return {
             'sequence_ids': sequence_features.sequence_ids,
             'attention_mask': sequence_features.attention_mask,
-            'graph_features': padded_graph_features,
+            'graph_features': graph_features,
             'label': label
         }

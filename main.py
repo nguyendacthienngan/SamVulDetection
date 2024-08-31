@@ -31,19 +31,22 @@ def collate_fn(batch):
     sequence_ids = [torch.tensor(item['sequence_ids']) for item in batch]
     attention_masks = [torch.tensor(item['attention_mask']) for item in batch]
     # attention_masks = [torch.tensor(item['attention_mask']) if item['attention_mask'] is not None else torch.ones_like(sequence_ids[0]) for item in batch]
-    graph_features = [item['graph_features'] for item in batch]
+    graph_features = [item['graph_features'] for item in batch if item['graph_features']  is not None]
     labels = [item['label'] for item in batch]
 
     # Chuyển đổi các dữ liệu sequence thành tensor
     sequence_ids_tensor = torch.stack(sequence_ids)
     attention_masks_tensor = torch.stack(attention_masks)
     labels_tensor = torch.tensor(labels)
-
+    if len(graph_features) > 0:
+        graph_features_tensor = dgl.batch(graph_features)  # Use DGL's batch function
+    else:
+        graph_features_tensor = None
     # Determine the maximum size of the graph matrices
-    max_size = max(
-        (gf.size(0) if gf is not None else 0)
-        for gf in graph_features
-    )
+    # max_size = max(
+    #     (gf.size(0) if gf is not None else 0)
+    #     for gf in graph_features
+    # )
 
     # Process graph features
     # Pad or truncate graph features
@@ -68,7 +71,7 @@ def collate_fn(batch):
     #             graph_features_tensor.append(gf)
 
     # graph_features_tensor = torch.stack(graph_features_tensor)
-    graph_features_tensor = dgl.batch(graph_features)  # Use DGL's batch function
+
     return {
         'sequence_ids': sequence_ids_tensor,
         'attention_mask': attention_masks_tensor,
@@ -86,24 +89,33 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             sequence_inputs = batch['sequence_ids']
             attention_mask = batch['attention_mask']
             graph_inputs = batch['graph_features']
-            labels = batch['label']
+            labels = batch['label'].to(device)
             # Debugging: Check shapes
             print(f"sequence_inputs shape: {sequence_inputs.shape}")
             print(f"attention_mask shape: {attention_mask.shape}")
-            print(f"graph_inputs shape: {graph_inputs.shape}")
             print(f"labels shape: {labels.shape}")
+            if (graph_inputs is not None):
+                # print(f"graph_inputs shape: {graph_inputs.shape}")
+                graph_inputs = graph_inputs.to(device)
 
             # Chuyển dữ liệu sang device
             sequence_inputs = sequence_inputs.to(device)
             attention_mask = attention_mask.to(device)
-            graph_inputs = graph_inputs.to(device)
-            labels = labels.to(device)
+            labels = labels.long()  # Convert bool to long (0 or 1)
             
             # Forward pass
-            logits = model(sequence_inputs, attention_mask, graph_inputs)
+            if graph_inputs is not None:
+                outputs = model(sequence_inputs, attention_mask, graph_inputs)
+            else:
+                outputs = model(sequence_inputs, attention_mask)
             
             # Tính loss
-            loss = loss_function(logits.squeeze(), labels.float())
+            # Extract logits from outputs
+            logits = outputs.logits
+            
+            # Calculate loss
+            loss = loss_function(logits, labels)
+
             
             # Backward pass và cập nhật
             optimizer.zero_grad()
@@ -203,7 +215,7 @@ print('Train model')
 optimizer = torch.optim.Adam(combined_model.parameters(), lr=1e-4)
 
 # Binary Cross-Entropy Loss for binary classification
-loss_function = nn.BCELoss()
+# loss_function = nn.BCELoss()
 # for epoch in range(num_epochs):
 #     combined_model.train()
 #     for batch in train_loader:
@@ -262,8 +274,7 @@ args = {
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 combined_model.to(device)
 optimizer = torch.optim.Adam(combined_model.parameters(), lr=args['learning_rate'])
-loss_function = nn.BCEWithLogitsLoss()
-
+loss_function = torch.nn.CrossEntropyLoss()
 # Call train function
 train(args, device, train_loader, val_loader, combined_model, optimizer, loss_function)
 
