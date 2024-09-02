@@ -98,10 +98,6 @@ def create_graph_from_json(data_item):
 
         # Tạo đồ thị với DGL
         g = dgl.graph(edge_tuples)
-
-        # Debug: Check number of nodes in the graph
-        print(f"Number of nodes in the graph---(edge_tuples): {g.num_nodes()}")
-        print(f"Number of nodes len(nodes): {len(nodes)}")
         
         # Thêm đặc trưng cho các nodes
         # Ví dụ: chỉ sử dụng 'typeFullName' và 'code' như là đặc trưng của các nodes
@@ -117,12 +113,6 @@ def create_graph_from_json(data_item):
             }
             node_features.append(features)
         
-        # Debug: Check number of nodes in the graph
-        print(f"Number of nodes in the graph: after add nodes {g.num_nodes()}")
-        
-        print(f"g.num_nodes() {g.num_nodes()}")
-        print(f"len(node_features) {len(node_features)}")
-
         # Ensure node features match number of nodes
         if len(node_features) < g.num_nodes():
             missing_count = g.num_nodes() - len(node_features)
@@ -137,7 +127,6 @@ def create_graph_from_json(data_item):
 
 
         if len(node_features) == g.num_nodes():
-            print(f'len(node_features) == g.num_nodes()')
             type_feature = torch.tensor([hash(f['type']) % 1000 for f in node_features], dtype=torch.float32)
             # Thêm một chiều mới để tạo tensor 2D với kích thước [num_nodes, 1]
             type_feature_2d = type_feature.unsqueeze(1)  # hoặc type_feature.view(-1, 1)

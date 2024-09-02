@@ -42,41 +42,8 @@ def collate_fn(batch):
     # graph_features_tensor = torch.stack(graph_features)
     if len(graph_features) > 0:
         graph_features_tensor = dgl.batch(graph_features)  # Use DGL's batch function
-        print(f'dgl.batch(graph_features) {dgl.batch(graph_features)}')
-
     else:
         graph_features_tensor = None
-
-
-    # Determine the maximum size of the graph matrices
-    # max_size = max(
-    #     (gf.size(0) if gf is not None else 0)
-    #     for gf in graph_features
-    # )
-
-    # Process graph features
-    # Pad or truncate graph features
-    # graph_features_tensor = []
-    # for gf in graph_features:
-    #     if gf is None:
-    #         # Create a default tensor with the max size
-    #         default_graph_tensor = torch.zeros((max_size, max_size))
-    #         graph_features_tensor.append(default_graph_tensor)
-    #     else:
-    #         size = gf.size(0)
-    #         if size < max_size:
-    #             # Pad the matrix
-    #             padded_matrix = torch.zeros((max_size, max_size))
-    #             padded_matrix[:size, :size] = gf
-    #             graph_features_tensor.append(padded_matrix)
-    #         elif size > max_size:
-    #             # Truncate the matrix
-    #             truncated_matrix = gf[:max_size, :max_size]
-    #             graph_features_tensor.append(truncated_matrix)
-    #         else:
-    #             graph_features_tensor.append(gf)
-
-    # graph_features_tensor = torch.stack(graph_features_tensor)
 
     return {
         'sequence_ids': sequence_ids_tensor,
@@ -92,9 +59,11 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
     save_dir = '/home/ngan/Documents/SamVulDetection/saved_models'
     os.makedirs(save_dir, exist_ok=True)  # Ensure the save directory exists
     for epoch in range(args['epoch']):
+        print(f'Epoch: {epoch}')
         total_loss = 0.0
         
         for batch_idx, batch in enumerate(train_loader):
+            print(f'batch_idx: {batch_idx}')
             sequence_inputs = batch['sequence_ids']
             attention_mask = batch['attention_mask']
             graph_inputs = batch['graph_features']
