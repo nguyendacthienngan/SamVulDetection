@@ -93,7 +93,6 @@ def create_graph_from_json(data_item):
         
         nodes = graph_data.get('nodes', [])
         edges = graph_data.get('edges', [])
-        # print(f'edges: {edges}')
         # Tạo danh sách các node id và edge connections
         edge_tuples = [(edge['inNode'], edge['outNode']) for edge in edges]
 
@@ -221,7 +220,6 @@ class MegaVulDataset(Dataset):
         sequence_features = convert_examples_to_features(item, self.tokenizer, self.args, idx, label)
         # Graph input processing
         graph_features = create_graph_from_json(item)
-        print(f'graph_features in getitem {graph_features}')
         return {
             'sequence_ids': sequence_features.sequence_ids,
             'attention_mask': sequence_features.attention_mask,

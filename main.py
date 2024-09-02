@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from transformers import RobertaTokenizer
+import matplotlib.pyplot as plt
+import os
 def load_and_split_data(json_file_path):
     # Load JSON data
     with open(json_file_path, 'r') as f:
@@ -85,21 +87,19 @@ def collate_fn(batch):
 
 def train(args, device, train_loader, val_loader, model, optimizer, loss_function):
     model.train()
-    
+    train_losses = []
+    best_val_loss = float('inf')
+    save_dir = '/home/ngan/Documents/SamVulDetection/saved_models'
+    os.makedirs(save_dir, exist_ok=True)  # Ensure the save directory exists
     for epoch in range(args['epoch']):
         total_loss = 0.0
         
-        for batch in train_loader:
+        for batch_idx, batch in enumerate(train_loader):
             sequence_inputs = batch['sequence_ids']
             attention_mask = batch['attention_mask']
             graph_inputs = batch['graph_features']
             labels = batch['label'].to(device)
-            # Debugging: Check shapes
-            print(f"sequence_inputs shape: {sequence_inputs.shape}")
-            print(f"attention_mask shape: {attention_mask.shape}")
-            print(f"labels shape: {labels.shape}")
             if (graph_inputs is not None):
-                # print(f"graph_inputs shape: {graph_inputs.shape}")
                 graph_inputs = graph_inputs.to(device)
 
             # Chuyển dữ liệu sang device
@@ -126,14 +126,42 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             optimizer.step()
             
             total_loss += loss.item()
+            # Print progress every 10 batches
+            if batch_idx % 10 == 0:
+                print(f"Epoch [{epoch + 1}/{args['epoch']}], Step [{batch_idx + 1}/{len(train_loader)}], Loss: {loss.item():.4f}")
+            
         
         avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch + 1}/{args['epoch']}, Loss: {avg_loss:.4f}")
+        train_losses.append(avg_loss)
+        print(f"Epoch {epoch + 1}/{args['epoch']}, Average Loss: {avg_loss:.4f}")
+        # print(f"Epoch {epoch + 1}/{args['epoch']}, Loss: {avg_loss:.4f}")
         
         # Đánh giá mô hình trên validation set
-        evaluate(args, device, val_loader, model)
+        val_loss = evaluate(args, device, val_loader, model)
+
+        # Save the model after each epoch
+        model_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}.pth')
+        torch.save(model.state_dict(), model_path)
+        print(f"Model saved to {model_path}")
+
+        # Optionally save the best model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_model_path = os.path.join(save_dir, 'best_model.pth')
+            torch.save(model.state_dict(), best_model_path)
+            print(f"Best model saved to {best_model_path} with validation loss: {best_val_loss:.4f}")
+
         
     print("Training complete.")
+
+    # Plot the training loss over epochs
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, args['epoch'] + 1), train_losses, marker='o', linestyle='-', color='b')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Loss over Epochs')
+    plt.grid(True)
+    plt.show()
 
 def evaluate(args, device, val_loader, model):
     model.eval()
@@ -147,12 +175,17 @@ def evaluate(args, device, val_loader, model):
             # Chuyển dữ liệu sang device
             sequence_inputs = sequence_inputs.to(device)
             attention_mask = attention_mask.to(device)
-            graph_inputs = graph_inputs.to(device)
             labels = labels.to(device)
-            
+            if (graph_inputs is not None):
+                graph_inputs = graph_inputs.to(device)
+
             # Forward pass
-            logits = model(sequence_inputs, attention_mask, graph_inputs)
-            preds = torch.sigmoid(logits).squeeze()  # Sử dụng sigmoid cho binary classification
+            if graph_inputs is not None:
+                outputs = model(sequence_inputs, attention_mask, graph_inputs)
+            else:
+                outputs = model(sequence_inputs, attention_mask)
+            # logits = model(sequence_inputs, attention_mask, graph_inputs)
+            preds = torch.sigmoid(outputs).squeeze()  # Sử dụng sigmoid cho binary classification
             
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(preds.cpu().numpy())

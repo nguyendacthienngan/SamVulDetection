@@ -52,8 +52,6 @@ class DevignModel(nn.Module):
     def forward(self, g_batch, cuda=False):
         features = g_batch.ndata['type']  # Use 'type' as the feature input
         edge_types = g_batch.edata['label']  # Use 'label' as edge type
-        print("Features shape:", features.shape)
-        print("Edge types shape:", edge_types.shape)
 
         outputs = self.ggnn(g_batch, features, edge_types)
         g_batch.ndata['GGNNOUTPUT'] = outputs
@@ -63,10 +61,7 @@ class DevignModel(nn.Module):
 
         x_i = torch.stack(x_i)
         h_i = torch.stack(h_i)
-        print(f'x_i.shape: {x_i.shape}') 
-        print(f'h_i.shape: {h_i.shape}') 
         c_i = torch.cat((h_i, x_i), dim=-1)
-        print(f'c_i.shape: {c_i.shape}') 
 
         Y_1 = self.maxpool1(
             F.relu(
