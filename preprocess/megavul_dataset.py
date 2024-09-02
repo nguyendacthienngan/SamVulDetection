@@ -66,9 +66,6 @@ class InputFeatures(object):
 
 
 def create_graph_from_json(data_item):
-    # print('data_item')
-    # print(data_item)
-
     """
     Create a DGL graph from a JSON item based on MegaVulFunction dataclass.
 
@@ -176,60 +173,13 @@ def create_graph_from_json(data_item):
     else:
         # Handle the case where func_graph_path is None
         return None
-# def pad_graph_features(graph_features, max_size):
-#     padded_graphs = []
-#     for g in graph_features:
-#         size = g.size(0)  # Assuming square matrices for simplicity
-#         if size < max_size:
-#             # Pad the graph with zeros
-#             padded_graph = torch.zeros((max_size, max_size))
-#             padded_graph[:size, :size] = g
-#             padded_graphs.append(padded_graph)
-#         else:
-#             # Truncate the graph
-#             padded_graph = g[:max_size, :max_size]
-#             padded_graphs.append(padded_graph)
-#     return torch.stack(padded_graphs)
-
-def pad_graph_features(graph, max_size):
-    """
-    Pad the adjacency matrix of a DGL graph to a specified size.
-
-    Args:
-        graph (dgl.DGLGraph): A single DGL graph object.
-        max_size (int): The maximum size for padding/truncating.
-
-    Returns:
-        torch.Tensor: Padded adjacency matrix of the graph.
-    """
-    # Get the adjacency matrix of the graph in scipy's coo format
-    adj = graph.adjacency_matrix(scipy_fmt="coo")
-    
-    # Convert the adjacency matrix to a dense PyTorch tensor
-    adj_dense = torch.tensor(adj.toarray(), dtype=torch.float32)
-
-    # Get the current size of the adjacency matrix
-    size = adj_dense.shape[0]
-
-    if size < max_size:
-        # Pad the adjacency matrix with zeros
-        padded_adj = torch.zeros((max_size, max_size), dtype=torch.float32)
-        padded_adj[:size, :size] = adj_dense
-    else:
-        # Truncate the adjacency matrix
-        padded_adj = adj_dense[:max_size, :max_size]
-
-    return padded_adj
 
 def convert_examples_to_features(js, tokenizer, args, idx, label):
     # Function to process sequence data and return tokens, ids
     code = js['func']
-
+    # if args.model_type in ["codegen"]:
     code_tokens = tokenizer.tokenize(code)
     source_tokens = code_tokens[:args['block_size']]
-    # if args.model_type in ["codegen"]:
-        # code_tokens = tokenizer.tokenize(code)
-        # source_tokens = code_tokens[:args.block_size]
     # elif args.model_type in ["starcoder"]:
     #     code_tokens = tokenizer.tokenize(code)
     #     source_tokens = code_tokens[:args.block_size]
@@ -271,12 +221,7 @@ class MegaVulDataset(Dataset):
         sequence_features = convert_examples_to_features(item, self.tokenizer, self.args, idx, label)
         # Graph input processing
         graph_features = create_graph_from_json(item)
-        if graph_features is not None:
-            padded_graph_features = pad_graph_features(graph_features, self.max_graph_size)
-        else:
-            # Create a placeholder tensor filled with zeros if graph_features is None
-            padded_graph_features = torch.zeros(self.max_graph_size, self.max_graph_size)
-
+        print(f'graph_features in getitem {graph_features}')
         return {
             'sequence_ids': sequence_features.sequence_ids,
             'attention_mask': sequence_features.attention_mask,

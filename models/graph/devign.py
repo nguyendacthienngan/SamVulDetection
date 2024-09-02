@@ -4,23 +4,39 @@ import torch.nn.functional as F
 from dgl.nn.pytorch import GatedGraphConv
 import dgl
 
+class ModelParser():
+    vector_size: int = 100  # 图结点的向量维度
+    hidden_size: int = 256  # GNN隐层向量维度
+    layer_num: int = 5  # GNN层数
+    num_classes: int = 2
+
+# features = g_batch.ndata['type']  # Use 'type' as the feature input
+# edge_types = g_batch.edata['label']  # Use 'label' as edge type
+# print("Features shape:", features.shape)
+# print("Edge types shape:", edge_types.shape)
+
+model_args = ModelParser()
+
 class DevignModel(nn.Module):
-    def __init__(self, input_dim=None, output_dim=None, max_edge_types=6, num_steps=6):
+    def __init__(self, num_layers=1, max_edge_types=6, num_steps=6):
         super(DevignModel, self).__init__()
-        self.inp_dim = input_dim
+        input_dim = max_edge_types + model_args.vector_size
+        output_dim = model_args.hidden_size
+        self.input_dim = input_dim
         self.output_dim = output_dim
         self.max_edge_types = max_edge_types
         self.num_timesteps = num_steps
         
         self.ggnn = GatedGraphConv(in_feats=input_dim, out_feats=output_dim,
                                    n_steps=num_steps, n_etypes=max_edge_types)
+        
         self.conv_l1 = nn.Conv1d(output_dim, output_dim, 3)
         self.maxpool1 = nn.MaxPool1d(3, stride=2)
         
         self.conv_l2 = nn.Conv1d(output_dim, output_dim, 1)
         self.maxpool2 = nn.MaxPool1d(2, stride=2)
 
-        self.concat_dim = input_dim + output_dim  # 100 + 128 = 228
+        self.concat_dim = input_dim + output_dim  # 106 + 256 = 362
         self.conv_l1_for_concat = nn.Conv1d(self.concat_dim, self.concat_dim, 3)
         self.maxpool1_for_concat = nn.MaxPool1d(3, stride=2)
         self.conv_l2_for_concat = nn.Conv1d(self.concat_dim, self.concat_dim, 1)
@@ -43,16 +59,14 @@ class DevignModel(nn.Module):
         g_batch.ndata['GGNNOUTPUT'] = outputs
 
         x_i, h_i = self.unbatch_features(g_batch)
+
+
         x_i = torch.stack(x_i)
         h_i = torch.stack(h_i)
+        print(f'x_i.shape: {x_i.shape}') 
+        print(f'h_i.shape: {h_i.shape}') 
         c_i = torch.cat((h_i, x_i), dim=-1)
-        # print(f'before adjust ${c_i.shape}') 
-
-        # Ensure the input to the convolution layers has the correct number of channels
-        # if c_i.size(1) != self.concat_dim:
-            # self.fc = nn.Linear(in_features=c_i.size(1), out_features=self.concat_dim)  # Adjust size
-        # c_i = self.fc(c_i)  # Adjust the feature dimensions as needed
-
+        print(f'c_i.shape: {c_i.shape}') 
 
         Y_1 = self.maxpool1(
             F.relu(
@@ -91,6 +105,11 @@ class DevignModel(nn.Module):
             h_i.append(g_i.ndata['GGNNOUTPUT'])
             max_len = max(g_i.number_of_nodes(), max_len)
         for i, (v, k) in enumerate(zip(x_i, h_i)):
+            if v.size(1) != self.input_dim:
+                v = F.pad(v, (0, self.input_dim - v.size(1)), value=0)
+            if k.size(1) != self.output_dim:
+                k = F.pad(k, (0, self.output_dim - k.size(1)), value=0)
+
             x_i[i] = torch.cat(
                 (v, torch.zeros(size=(max_len - v.size(0), *(v.shape[1:])), requires_grad=v.requires_grad,
                                 device=v.device)), dim=0)

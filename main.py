@@ -30,7 +30,6 @@ def collate_fn(batch):
     # Tách các phần tử của batch
     sequence_ids = [torch.tensor(item['sequence_ids']) for item in batch]
     attention_masks = [torch.tensor(item['attention_mask']) for item in batch]
-    # attention_masks = [torch.tensor(item['attention_mask']) if item['attention_mask'] is not None else torch.ones_like(sequence_ids[0]) for item in batch]
     graph_features = [item['graph_features'] for item in batch if item['graph_features']  is not None]
     labels = [item['label'] for item in batch]
 
@@ -38,10 +37,15 @@ def collate_fn(batch):
     sequence_ids_tensor = torch.stack(sequence_ids)
     attention_masks_tensor = torch.stack(attention_masks)
     labels_tensor = torch.tensor(labels)
+    # graph_features_tensor = torch.stack(graph_features)
     if len(graph_features) > 0:
         graph_features_tensor = dgl.batch(graph_features)  # Use DGL's batch function
+        print(f'dgl.batch(graph_features) {dgl.batch(graph_features)}')
+
     else:
         graph_features_tensor = None
+
+
     # Determine the maximum size of the graph matrices
     # max_size = max(
     #     (gf.size(0) if gf is not None else 0)
@@ -109,12 +113,11 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             else:
                 outputs = model(sequence_inputs, attention_mask)
             
-            # Tính loss
             # Extract logits from outputs
-            logits = outputs.logits
+            # logits = outputs.logits
             
             # Calculate loss
-            loss = loss_function(logits, labels)
+            loss = loss_function(outputs, labels)
 
             
             # Backward pass và cập nhật
@@ -200,7 +203,7 @@ print("Create DataLoaders")
 
 # Initialize the model
 clr_model = CLRModel(num_labels=2)
-devign_model = DevignModel(input_dim=100, output_dim=128)  # Adjust dimensions based on your data
+devign_model = DevignModel()  # Adjust dimensions based on your data
 combined_model = CombinedModel(clr_model, devign_model)
 
 print('Init model sucessfully')
