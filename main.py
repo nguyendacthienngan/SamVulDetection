@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from transformers import RobertaTokenizer
 import matplotlib.pyplot as plt
 import os
+import numpy as np
 def load_and_split_data(json_file_path):
     # Load JSON data
     with open(json_file_path, 'r') as f:
@@ -103,7 +104,6 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
         avg_loss = total_loss / len(train_loader)
         train_losses.append(avg_loss)
         print(f"Epoch {epoch + 1}/{args['epoch']}, Average Loss: {avg_loss:.4f}")
-        # print(f"Epoch {epoch + 1}/{args['epoch']}, Loss: {avg_loss:.4f}")
         
         # Đánh giá mô hình trên validation set
         val_loss = evaluate(args, device, val_loader, model)
@@ -138,13 +138,14 @@ def evaluate(args, device, val_loader, model):
     all_preds = []
     
     with torch.no_grad():
-        for batch in val_loader:
-            sequence_inputs, attention_mask, graph_inputs, labels = batch
-            
+        for batch_idx, batch in enumerate(val_loader):
+            sequence_inputs = batch['sequence_ids']
+            attention_mask = batch['attention_mask']
+            graph_inputs = batch['graph_features']
             # Chuyển dữ liệu sang device
             sequence_inputs = sequence_inputs.to(device)
             attention_mask = attention_mask.to(device)
-            labels = labels.to(device)
+            labels = batch['label'].to(device)
             if (graph_inputs is not None):
                 graph_inputs = graph_inputs.to(device)
 
@@ -153,7 +154,6 @@ def evaluate(args, device, val_loader, model):
                 outputs = model(sequence_inputs, attention_mask, graph_inputs)
             else:
                 outputs = model(sequence_inputs, attention_mask)
-            # logits = model(sequence_inputs, attention_mask, graph_inputs)
             preds = torch.sigmoid(outputs).squeeze()  # Sử dụng sigmoid cho binary classification
             
             all_labels.extend(labels.cpu().numpy())
