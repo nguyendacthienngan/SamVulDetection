@@ -52,43 +52,36 @@ def collate_fn(batch):
         'graph_features': graph_features_tensor,
         'label': labels_tensor
     }
-
 def train(args, device, train_loader, val_loader, model, optimizer, loss_function):
     model.train()
     train_losses = []
     best_val_loss = float('inf')
     save_dir = '/home/ngan/Documents/SamVulDetection/saved_models'
     os.makedirs(save_dir, exist_ok=True)  # Ensure the save directory exists
+
     for epoch in range(args['epoch']):
         print(f'Epoch: {epoch}')
         total_loss = 0.0
         
         for batch_idx, batch in enumerate(train_loader):
             print(f'batch_idx: {batch_idx}')
-            sequence_inputs = batch['sequence_ids']
-            attention_mask = batch['attention_mask']
-            graph_inputs = batch['graph_features']
-            labels = batch['label'].to(device)
-            if (graph_inputs is not None):
-                graph_inputs = graph_inputs.to(device)
-
-            # Chuyển dữ liệu sang device
-            sequence_inputs = sequence_inputs.to(device)
-            attention_mask = attention_mask.to(device)
-            labels = labels.long()  # Convert bool to long (0 or 1)
+            sequence_inputs = batch['sequence_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            graph_inputs = batch['graph_features'].to(device) if batch['graph_features'] is not None else None
+            labels = batch['label'].to(device).long()  # Convert labels to long
             
             # Forward pass
             if graph_inputs is not None:
                 outputs = model(sequence_inputs, attention_mask, graph_inputs)
             else:
                 outputs = model(sequence_inputs, attention_mask)
-            
-            # Extract logits from outputs
-            # logits = outputs.logits
-            
+                
+            # Print shapes and types for debugging
+            print(f"Sequence logits shape: {outputs.shape}, dtype: {outputs.dtype}")
+            print(f"Labels shape: {labels.shape}, dtype: {labels.dtype}")
+
             # Calculate loss
             loss = loss_function(outputs, labels)
-
             
             # Backward pass và cập nhật
             optimizer.zero_grad()
@@ -96,10 +89,10 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             optimizer.step()
             
             total_loss += loss.item()
+            
             # Print progress every 10 batches
             if batch_idx % 10 == 0:
                 print(f"Epoch [{epoch + 1}/{args['epoch']}], Step [{batch_idx + 1}/{len(train_loader)}], Loss: {loss.item():.4f}")
-            
         
         avg_loss = total_loss / len(train_loader)
         train_losses.append(avg_loss)
@@ -139,32 +132,40 @@ def evaluate(args, device, val_loader, model):
     
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):
+            print(f'batch_idx: {batch_idx}')
             sequence_inputs = batch['sequence_ids']
             attention_mask = batch['attention_mask']
             graph_inputs = batch['graph_features']
+            labels = batch['label'].to(device)
+            
             # Chuyển dữ liệu sang device
             sequence_inputs = sequence_inputs.to(device)
             attention_mask = attention_mask.to(device)
-            labels = batch['label'].to(device)
-            if (graph_inputs is not None):
+            if graph_inputs is not None:
                 graph_inputs = graph_inputs.to(device)
-
+            
             # Forward pass
             if graph_inputs is not None:
                 outputs = model(sequence_inputs, attention_mask, graph_inputs)
             else:
                 outputs = model(sequence_inputs, attention_mask)
-            preds = torch.sigmoid(outputs).squeeze()  # Sử dụng sigmoid cho binary classification
             
-            all_labels.extend(labels.cpu().numpy())
-            all_preds.extend(preds.cpu().numpy())
+            # Use sigmoid for binary classification
+            preds = torch.sigmoid(outputs).squeeze()  
+            # Convert predictions to binary (0 or 1)
+            binary_preds = (preds > 0.5).long()  # Convert probabilities to binary labels
+            all_labels.extend(labels.cpu().numpy())  # Convert to numpy array
+            all_preds.extend(binary_preds.cpu().numpy())  # Convert to numpy array
     
-    # Tính các số liệu đánh giá
-    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-    accuracy = accuracy_score(all_labels, (np.array(all_preds) > 0.5).astype(int))
-    precision = precision_score(all_labels, (np.array(all_preds) > 0.5).astype(int))
-    recall = recall_score(all_labels, (np.array(all_preds) > 0.5).astype(int))
-    f1 = f1_score(all_labels, (np.array(all_preds) > 0.5).astype(int))
+    # Ensure both labels and predictions are 1-dimensional arrays
+    all_labels = np.array(all_labels).flatten()
+    all_preds = np.array(all_preds).flatten()
+    
+    # Calculate evaluation metrics
+    accuracy = accuracy_score(all_labels, all_preds)
+    precision = precision_score(all_labels, all_preds)
+    recall = recall_score(all_labels, all_preds)
+    f1 = f1_score(all_labels, all_preds)
     
     print(f"Validation Accuracy: {accuracy:.4f}")
     print(f"Validation Precision: {precision:.4f}")
@@ -218,42 +219,6 @@ combined_model.to(device)
 print('Train model')
 
 optimizer = torch.optim.Adam(combined_model.parameters(), lr=1e-4)
-
-# Binary Cross-Entropy Loss for binary classification
-# loss_function = nn.BCELoss()
-# for epoch in range(num_epochs):
-#     combined_model.train()
-#     for batch in train_loader:
-#         graph_data = batch['graph']
-#         labels = batch['label'].to(device)
-
-#         # Forward pass
-#         optimizer.zero_grad()
-#         outputs = combined_model(graph_data)
-#         loss = loss_function(outputs, labels)
-
-#         # Backward pass and optimization
-#         loss.backward()
-#         optimizer.step()
-
-#     # Evaluate on validation set
-#     val_metrics = evaluate_model(combined_model, val_loader, device)
-#     print(f'Epoch {epoch + 1}, Validation Metrics: {val_metrics}')
-
-
-# # Evaluate the model
-# print('Evaluate the model')
-
-# val_metrics = evaluate_model(combined_model, val_loader, device)
-
-# # Print the results
-# for metric_name, value in val_metrics.items():
-#     if metric_name == 'Confusion Matrix':
-#         print(f"{metric_name}:\n{value}")
-#     else:
-#         print(f"{metric_name}: {value:.4f}")
-
-# Define arguments
 
 # Set training arguments
 args = {

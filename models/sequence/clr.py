@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-# from transformers import RobertaModel, RobertaConfig
-# from transformers.models.roberta.modeling_roberta import RobertaClassificationHead
 from transformers import AutoModelForSequenceClassification
 
 class CLRModel(nn.Module):
@@ -11,13 +9,10 @@ class CLRModel(nn.Module):
         self.config = self.model.config 
 
     def forward(self, input_ids, attention_mask=None, labels=None):
-        return self.model(input_ids, attention_mask=attention_mask)
-        # outputs = self.model(input_ids, attention_mask=attention_mask)
-        # sequence_output = outputs[0]
-        # logits = self.classifier(sequence_output)
+        outputs = self.model(input_ids, attention_mask=attention_mask)
+        sequence_logits = outputs.logits  # [batch_size, num_labels]
+
+        # Reduce the logits to a single value per sample (e.g., by averaging or taking the max)
+        sequence_logits = sequence_logits.mean(dim=1, keepdim=True)  # Now [batch_size, 1]
         
-        # if labels is not None:
-        #     loss_fct = nn.CrossEntropyLoss()
-        #     loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-        #     return loss, logits
-        # return logits
+        return sequence_logits

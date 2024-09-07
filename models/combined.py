@@ -6,70 +6,54 @@ class CombinedModel(nn.Module):
         super(CombinedModel, self).__init__()
         self.clr_model = clr_model
         self.devign_model = devign_model
+        # Since you have binary classification (0 or 1), the output size should be 2 (for 2 classes)
+        self.classifier = nn.Linear(2, 2)  # Output 2 logits for binary classification
     
     def forward(self, sequence_inputs, attention_mask, graph_inputs=None):
         # Get logits from CLR model (sequence data)
-        sequence_outputs = self.clr_model(sequence_inputs, attention_mask)
-        sequence_logits = sequence_outputs.logits
+        sequence_logits = self.clr_model(sequence_inputs, attention_mask)
+        print(f"Sequence logits shape: {sequence_logits.shape}")  # Debugging shape
+        
+        # Ensure sequence_logits is of shape [batch_size, 1]
+        if sequence_logits.dim() > 2:
+            sequence_logits = sequence_logits.mean(dim=1, keepdim=True)
+        
         # Handle case where graph inputs might be None
         if graph_inputs is not None:
             graph_outputs = self.devign_model(graph_inputs)
-            # Aggregate graph outputs to match batch size (e.g., mean pooling)
+            
+            # If graph_outputs is a tuple, extract the first element (the actual logits or output tensor)
             if isinstance(graph_outputs, tuple):
-                graph_outputs = graph_outputs[0]  # Extract the tensor from the tuple
-
-            graph_logits = graph_outputs.mean(dim=0, keepdim=True)
+                graph_outputs = graph_outputs[0]
+            
+            print(f"Graph outputs shape before pooling: {graph_outputs.shape}")  # Debugging shape
+            
+            # Ensure graph_outputs is at least 2D
+            if graph_outputs.dim() == 1:
+                graph_outputs = graph_outputs.unsqueeze(dim=1)  # Add an extra dimension
+            
+            # Ensure graph_outputs is of shape [batch_size, 1]
+            if graph_outputs.dim() > 2:
+                graph_outputs = graph_outputs.mean(dim=1, keepdim=True)
+            
+            # Adjust graph_outputs size to match the batch size of sequence_logits
+            if graph_outputs.shape[0] != sequence_logits.shape[0]:
+                padding_size = sequence_logits.shape[0] - graph_outputs.shape[0]
+                if padding_size > 0:
+                    # Pad graph_outputs with zeros to match the sequence_logits batch size
+                    graph_outputs = torch.cat([graph_outputs, torch.zeros(padding_size, 1).to(graph_outputs.device)], dim=0)
+                else:
+                    # In case graph_outputs has more samples, truncate it
+                    graph_outputs = graph_outputs[:sequence_logits.shape[0], :]
+            
+            print(f"Graph outputs shape after adjustment: {graph_outputs.shape}")  # Debugging shape
         else:
-            # If no graph input, return zeros or a placeholder tensor
-            graph_logits = torch.zeros(sequence_logits.shape[0], 1).to(sequence_logits.device)
+            graph_outputs = torch.zeros(sequence_logits.shape).to(sequence_logits.device)
+            print(f"Graph outputs (zeros) shape: {graph_outputs.shape}")  # Debugging shape
 
         # Concatenate or combine logits
-        combined_logits = torch.cat((sequence_logits, graph_logits.expand(sequence_logits.shape[0], -1)), dim=1)
-        return combined_logits
-
-
-# class CombinedModel(nn.Module):
-#     def __init__(self, clr_model, devign_model):
-#         super(CombinedModel, self).__init__()
-#         self.clr_model = clr_model
-#         self.devign_model = devign_model
-#         print(f'clr_model.config.hidden_size: {clr_model.config.hidden_size}')
-#         print(f'devign_model.concat_dim: {devign_model.concat_dim}')
-#         self.fc = None  # Khởi tạo mà không có lớp FC
-
-
-#     def forward(self, sequence_inputs, attention_mask=None, graph_inputs=None):
-#         # Get sequence outputs from CLRModel
-#         sequence_outputs = self.clr_model(sequence_inputs, attention_mask=attention_mask)
-#         hidden_size = self.clr_model.config.hidden_size
-#         sequence_logits = sequence_outputs.logits
-#         graph_logits = []
-#         if graph_inputs is not None:
-#             graph_logits = self.devign_model(graph_inputs)
-#             devign_output = graph_logits[0]
-#             print(f'graph_logits[0] shape: {devign_output.shape}')
-
-#             if len(graph_logits) > 0:
-#                 if devign_output.dim() == 1:
-#                     print(f'devign_output.dim() == 1')
-#                     devign_output = devign_output.unsqueeze(1)
-#                 if sequence_logits.dim() == 1:
-#                     print(f'sequence_logits.dim() == 1')
-#                     sequence_logits = sequence_logits.unsqueeze(1)
-#                 # graph_logits = torch.cat(graph_logits, dim=0) if isinstance(graph_logits, list) else graph_logits
-#                 # combined_logits = torch.cat((sequence_logits, graph_logits), dim=1)
-#                 print(f'sequence_logits shape: {sequence_logits.shape}')
-#                 print(f'devign_output shape: {devign_output.shape}')
-
-#                 combined_logits = torch.cat((sequence_logits, devign_output), dim=1)
-#             else:
-#                 combined_logits = sequence_logits
-#         else:
-#             combined_logits = sequence_logits
+        combined_logits = torch.cat((sequence_logits, graph_outputs), dim=1)  # Shape: [batch_size, 2]
+        print(f"Combined logits shape: {combined_logits.shape}")  # Debugging shape
         
-#         # Cập nhật lớp FC nếu chưa có hoặc kích thước thay đổi
-#         in_features = combined_logits.shape[1]
-#         if self.fc is None or self.fc.in_features != in_features:
-#             self.fc = nn.Linear(in_features, 1)
-
-#         return self.fc(combined_logits)
+        final_output = self.classifier(combined_logits)  # Shape: [batch_size, 2]
+        return final_output

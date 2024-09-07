@@ -42,9 +42,7 @@ class DevignModel(nn.Module):
         self.conv_l2_for_concat = nn.Conv1d(self.concat_dim, self.concat_dim, 1)
         self.maxpool2_for_concat = nn.MaxPool1d(2, stride=2)
         
-        # Adjust the input dimension of the linear layer to match c_i
-        # self.fc = nn.Linear(129, 128)  # Giả sử 129 là số lượng đặc trưng đầu vào và 128 là số lượng đặc trưng đầu ra mong muốn.
-       
+        # Adjust the input dimension of the linear layer to match c_i       
         self.mlp_z = nn.Linear(in_features=self.concat_dim, out_features=1)
         self.mlp_y = nn.Linear(in_features=output_dim, out_features=1)
         self.sigmoid = nn.Sigmoid()
