@@ -126,51 +126,49 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
     plt.show()
 
 def evaluate(args, device, val_loader, model):
-    model.eval()
+    model.eval()  # Set the model to evaluation mode
+    total_loss = 0
     all_labels = []
     all_preds = []
     
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):
-            print(f'batch_idx: {batch_idx}')
-            sequence_inputs = batch['sequence_ids']
-            attention_mask = batch['attention_mask']
-            graph_inputs = batch['graph_features']
+            sequence_inputs = batch['sequence_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
             labels = batch['label'].to(device)
             
-            # Chuyển dữ liệu sang device
-            sequence_inputs = sequence_inputs.to(device)
-            attention_mask = attention_mask.to(device)
+            graph_inputs = batch['graph_features']
             if graph_inputs is not None:
                 graph_inputs = graph_inputs.to(device)
+                # graph_inputs = [g.to(device) for g in graph_inputs]
             
             # Forward pass
-            if graph_inputs is not None:
-                outputs = model(sequence_inputs, attention_mask, graph_inputs)
-            else:
-                outputs = model(sequence_inputs, attention_mask)
+            outputs = model(sequence_inputs, attention_mask, graph_inputs)
             
-            # Use sigmoid for binary classification
-            preds = torch.sigmoid(outputs).squeeze()  
-            # Convert predictions to binary (0 or 1)
-            binary_preds = (preds > 0.5).long()  # Convert probabilities to binary labels
-            all_labels.extend(labels.cpu().numpy())  # Convert to numpy array
-            all_preds.extend(binary_preds.cpu().numpy())  # Convert to numpy array
-    
-    # Ensure both labels and predictions are 1-dimensional arrays
-    all_labels = np.array(all_labels).flatten()
-    all_preds = np.array(all_preds).flatten()
-    
-    # Calculate evaluation metrics
-    accuracy = accuracy_score(all_labels, all_preds)
-    precision = precision_score(all_labels, all_preds)
-    recall = recall_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds)
-    
-    print(f"Validation Accuracy: {accuracy:.4f}")
-    print(f"Validation Precision: {precision:.4f}")
-    print(f"Validation Recall: {recall:.4f}")
-    print(f"Validation F1 Score: {f1:.4f}")
+            # Combined logits shape is [batch_size, 2], we need to get class predictions (0 or 1)
+            preds = torch.argmax(outputs, dim=1)  # Get the predicted class for each sample
+            labels_np = labels.cpu().numpy()  # Convert labels to numpy
+            
+            all_preds.append(preds.cpu().numpy())  # Convert predictions to numpy and append
+            all_labels.append(labels_np)
+            
+        # Flatten the accumulated predictions and labels
+        all_preds = np.concatenate(all_preds).flatten()
+        all_labels = np.concatenate(all_labels).flatten()
+
+        # Debug print
+        print(f"all_preds shape: {all_preds.shape}")
+        print(f"all_labels shape: {all_labels.shape}")
+
+        # Calculate evaluation metrics
+        accuracy = accuracy_score(all_labels, all_preds)
+        precision = precision_score(all_labels, all_preds)
+        recall = recall_score(all_labels, all_preds)
+            
+        print(f"Validation Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}")
+
+    return total_loss
+
 
 
 # Main code
