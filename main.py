@@ -94,11 +94,17 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             attention_mask = attention_mask.to(device)
             
             # Forward pass
-            if graph_inputs is not None:
-                outputs = model(sequence_inputs, attention_mask, graph_inputs)
+            if isinstance(model, PhpNetGraphTokensCombine):
+                if graph_inputs is not None:
+                    outputs = model(sequence_inputs, graph_inputs)
+                else:
+                    outputs = model(sequence_inputs)
             else:
-                outputs = model(sequence_inputs, attention_mask)
-                        
+                if graph_inputs is not None:
+                    outputs = model(sequence_inputs, attention_mask, graph_inputs)
+                else:
+                    outputs = model(sequence_inputs, attention_mask)
+    
             # Calculate loss
             loss = loss_function(outputs, labels)
             
@@ -128,7 +134,8 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
         print(f"Epoch {epoch + 1}/{args['epoch']}, Average Loss: {avg_loss:.4f}")
         
         # Save the model after each epoch
-        model_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}.pth')
+        model_name = 'PhpNetGraphTokensCombine' if isinstance(model, PhpNetGraphTokensCombine) else 'CombinedModel'
+        model_path = os.path.join(save_dir, f'{model_name}_epoch_{epoch + 1}.pth')
         torch.save(model.state_dict(), model_path)
         print(f"Model saved to {model_path}")
         
