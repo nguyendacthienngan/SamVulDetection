@@ -12,6 +12,8 @@ from transformers import RobertaTokenizer
 import matplotlib.pyplot as plt
 import os
 import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
+
 def load_and_split_data(json_file_path):
     # Load JSON data
     with open(json_file_path, 'r') as f:
@@ -60,9 +62,9 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
     os.makedirs(save_dir, exist_ok=True)  # Ensure the save directory exists
     scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
     # Freeze Roberta layers for the first `freeze_epochs` epochs
-    for param in model.clr_model.parameters():
-        param.requires_grad = False
-
+    if hasattr(model, 'clr_model'):
+        for param in model.clr_model.parameters():
+            param.requires_grad = False
     for epoch in range(args['epoch']):
 
         print(f'Epoch: {epoch}')
@@ -70,8 +72,9 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
         # Unfreeze Roberta after `freeze_epochs`
         if epoch == freeze_epochs:
             print(f"Unfreezing Roberta parameters at epoch {epoch}")
-            for param in model.clr_model.parameters():
-                param.requires_grad = True
+            if hasattr(model, 'clr_model'):
+                for param in model.clr_model.parameters():
+                    param.requires_grad = True
                 
         total_loss = 0.0
         model.train() 
@@ -219,9 +222,9 @@ test_dataset = MegaVulDataset(test_data, test_labels, tokenizer, data_args)
 
 
 # Create DataLoaders
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, collate_fn=collate_fn)
-test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False, collate_fn=collate_fn)
+train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=collate_fn)
+test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False, collate_fn=collate_fn)
 print("Create DataLoaders")
 
 
@@ -231,7 +234,6 @@ print("Create DataLoaders")
 clr_model = CLRModel(num_labels=2)
 devign_model = DevignModel()  # Adjust dimensions based on your data
 combined_model = CombinedModel(clr_model, devign_model)
-
 print('Init model sucessfully')
 num_epochs = 10
 # Assuming you have a dataloader for the validation or test set
@@ -273,7 +275,12 @@ print(f'new class_weights: {class_weights}')
 
 loss_function = torch.nn.CrossEntropyLoss(weight=class_weights)
 # Call train function
-train(args, device, train_loader, val_loader, combined_model, optimizer, loss_function)
+from models.phpnet import PhpNetGraphTokensCombine
+php_model = PhpNetGraphTokensCombine().to(device)
+
+
+# train(args, device, train_loader, val_loader, combined_model, optimizer, loss_function)
+train(args, device, train_loader, val_loader, php_model, optimizer, loss_function, 0)
 
 # Plot the training loss over epochs after the training loop
 plt.figure(figsize=(10, 6))
