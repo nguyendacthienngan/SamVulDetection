@@ -13,8 +13,15 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN  # Combines SMOTE (oversampling) and Edited Nearest Neighbors (undersampling)
 
-def load_and_split_data(json_file_path):
+import numpy as np
+import dgl
+
+def load_and_split_data(json_file_path, apply_combined_sampling=True):
     # Load JSON data
     with open(json_file_path, 'r') as f:
         data = json.load(f)
@@ -27,9 +34,28 @@ def load_and_split_data(json_file_path):
     train_data, temp_data, train_labels, temp_labels = train_test_split(data_items, labels, test_size=0.3, random_state=42)
     val_data, test_data, val_labels, test_labels = train_test_split(temp_data, temp_labels, test_size=0.5, random_state=42)
 
-    return train_data, val_data, test_data, train_labels, val_labels, test_labels
+    # Check label distribution before resampling
+    print(f"Training label distribution before resampling: {np.bincount(train_labels)}")
 
-import dgl
+    if apply_combined_sampling:
+        # First apply undersampling to the majority class
+        undersampler = RandomUnderSampler(sampling_strategy=0.8, random_state=42)  # Retain 80% of the majority class
+        train_data, train_labels = undersampler.fit_resample(np.array(train_data).reshape(-1, 1), train_labels)
+        train_data = [item[0] for item in train_data]  # Flatten data back
+
+        # Then apply oversampling to the minority class
+        oversampler = RandomOverSampler(sampling_strategy=1.0, random_state=42)  # Match minority class to majority
+        train_data_resampled, train_labels_resampled = oversampler.fit_resample(np.array(train_data).reshape(-1, 1), train_labels)
+        train_data_resampled = [item[0] for item in train_data_resampled]
+
+        # Check label distribution after resampling
+        print(f"Training label distribution after combined resampling: {np.bincount(train_labels_resampled)}")
+    else:
+        train_data_resampled = train_data
+        train_labels_resampled = train_labels
+
+    return train_data_resampled, val_data, test_data, train_labels_resampled, val_labels, test_labels
+
 
 def collate_fn(batch):
     # Tách các phần tử của batch
@@ -232,8 +258,7 @@ test_dataset = MegaVulDataset(test_data, test_labels, tokenizer, data_args)
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
 val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, collate_fn=collate_fn)
 test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False, collate_fn=collate_fn)
-print("Create DataLoaders")
-
+print("DataLoaders created with resampled training data.")
 
 # Assuming you have already split your data as shown in the previous steps
 
@@ -290,10 +315,64 @@ php_model = PhpNetGraphTokensCombine().to(device)
 train(args, device, train_loader, val_loader, php_model, optimizer, loss_function, 0)
 
 # Plot the training loss over epochs after the training loop
-plt.figure(figsize=(10, 6))
-plt.plot(range(1, args['epoch'] + 1), train_losses, marker='o', linestyle='-', color='b')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
-plt.title('Training Loss over Epochs')
-plt.grid(True)
-plt.show()
+# plt.figure(figsize=(10, 6))
+# plt.plot(range(1, args['epoch'] + 1), train_losses, marker='o', linestyle='-', color='b')
+# plt.xlabel('Epoch')
+# plt.ylabel('Loss')
+# plt.title('Training Loss over Epochs')
+# plt.grid(True)
+# plt.show()
+
+
+# model = combined_model
+# model_path = '/home/ngan/Documents/SamVulDetection/saved_models/model_epoch_1.pth'
+# model.load_state_dict(torch.load(model_path))
+# total_loss = 0
+# all_labels = []
+# all_preds = []
+# model.eval()
+# with torch.no_grad():
+#     for batch_idx, batch in enumerate(val_loader):
+#         sequence_inputs = batch['sequence_ids'].to(device)
+#         attention_mask = batch['attention_mask'].to(device)
+#         labels = batch['label'].to(device)
+        
+#         graph_inputs = batch['graph_features']
+#         if graph_inputs is not None:
+#             graph_inputs = graph_inputs.to(device)
+#             # graph_inputs = [g.to(device) for g in graph_inputs]
+        
+#         # Forward pass
+#         outputs = model(sequence_inputs, attention_mask, graph_inputs)
+
+        
+#         # Combined logits shape is [batch_size, 2], we need to get class predictions (0 or 1)
+#         preds = torch.argmax(outputs, dim=1)  # Get the predicted class for each sample
+
+#         print(f"Labels: {labels.cpu().numpy()}")
+#         print(f"Predictions: {preds.cpu().numpy()}")
+#         labels_np = labels.cpu().numpy()  # Convert labels to numpy
+        
+#         all_preds.append(preds.cpu().numpy())  # Convert predictions to numpy and append
+#         all_labels.append(labels_np)
+#         break
+        
+#     # Flatten the accumulated predictions and labels
+#     all_preds = np.concatenate(all_preds).flatten()
+#     all_labels = np.concatenate(all_labels).flatten()
+    
+#     # Calculate evaluation metrics
+#     accuracy = accuracy_score(all_labels, all_preds)
+#     # precision = precision_score(all_labels, all_preds)
+#     # recall = recall_score(all_labels, all_preds)
+#     precision = precision_score(y_true, y_pred, zero_division=1)
+
+#     precision = precision_score(all_labels, all_preds, average='binary')
+#     unique, counts = np.unique(all_preds, return_counts=True)
+#     print(f"Predictions distribution: {dict(zip(unique, counts))}")
+
+#     recall = recall_score(y_true, y_pred, zero_division=1)
+#     unique, counts = np.unique(all_preds, return_counts=True)
+#     print(f"Predictions distribution: {dict(zip(unique, counts))}")
+
+#     print(f"Validation Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}")
