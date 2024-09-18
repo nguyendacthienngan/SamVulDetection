@@ -24,11 +24,11 @@ class PhpNetGraphTokensCombine(nn.Module):
 
     def forward(self, dataTokens=None, dataGraph=None):
         if dataGraph is not None:
-            features = dataGraph.ndata['type'].long()
-            x = self.embed1(features).reshape(features.shape[0], -1)
-            x = self.ggnn(x, dataGraph.edge_index)
-            batch = dataGraph.batch if hasattr(dataGraph, 'batch') else None
-            x = global_max_pool(x, batch)
+            features = dataGraph.ndata['type']  # Use 'type' as the feature input
+            edge_types = dataGraph.edata['label']  # Use 'label' as edge type
+            x = self.ggnn(dataGraph, features, edge_types)  # GGNN updates node features
+            x = global_max_pool(x, dataGraph)   # Pool node features into a graph-level feature
+            dataGraph.ndata['GGNNOUTPUT'] = x
         else:
             batch_size = dataTokens.size(0)
             x = torch.zeros(batch_size, 2000).to(dataTokens.device)
@@ -46,3 +46,26 @@ class PhpNetGraphTokensCombine(nn.Module):
         x = F.relu(self.lin2(x))
 
         return x
+
+
+    def unbatch_features(self, g):
+        x_i = []
+        h_i = []
+        max_len = -1
+        for g_i in dgl.unbatch(g):
+            x_i.append(g_i.ndata['type'])
+            h_i.append(g_i.ndata['GGNNOUTPUT'])
+            max_len = max(g_i.number_of_nodes(), max_len)
+        for i, (v, k) in enumerate(zip(x_i, h_i)):
+            if v.size(1) != self.input_dim:
+                v = F.pad(v, (0, self.input_dim - v.size(1)), value=0)
+            if k.size(1) != self.output_dim:
+                k = F.pad(k, (0, self.output_dim - k.size(1)), value=0)
+
+            x_i[i] = torch.cat(
+                (v, torch.zeros(size=(max_len - v.size(0), *(v.shape[1:])), requires_grad=v.requires_grad,
+                                device=v.device)), dim=0)
+            h_i[i] = torch.cat(
+                (k, torch.zeros(size=(max_len - k.size(0), *(k.shape[1:])), requires_grad=k.requires_grad,
+                                device=k.device)), dim=0)
+        return x_i, h_i
