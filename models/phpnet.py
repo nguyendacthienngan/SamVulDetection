@@ -1,71 +1,70 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GatedGraphConv, global_max_pool  # Using GatedGraphConv
+import dgl
+from dgl.nn import GatedGraphConv
+
 class PhpNetGraphTokensCombine(nn.Module):
     def __init__(self):
         super(PhpNetGraphTokensCombine, self).__init__()
-        # Embedding for graph node features
-        self.embed1 = nn.Embedding(num_embeddings=5000, embedding_dim=100)
-        
-        # Gated Graph Neural Network (GGNN)
-        self.ggnn = GatedGraphConv(out_channels=2000, num_layers=3)
-        
-        # Embedding for token inputs
-        self.embed = nn.Embedding(num_embeddings=50141, embedding_dim=100)
-        
-        # GRU for sequence modeling
-        self.lstm1 = nn.GRU(input_size=100, hidden_size=200, num_layers=3, batch_first=True, bidirectional=True)
+        # Update the embedding size to cover the maximum token ID range
+        self.embed1 = nn.Embedding(num_embeddings=50141, embedding_dim=200)  # Updated size
+
+        # Gated Graph Neural Network (GGNN) with adjusted feature sizes
+        self.ggnn = GatedGraphConv(in_feats=200, out_feats=6000, n_steps=3, n_etypes=6)  # Updated feature sizes
+
+        # GRU for sequence modeling (optional for tokens)
+        self.lstm1 = nn.GRU(input_size=200, hidden_size=6000, num_layers=3, batch_first=True, bidirectional=True)
+
+        # Linear layers to reduce graph and token feature sizes before concatenation
+        self.fc_graph = nn.Linear(6000, 3000)  # Reduce graph feature size
+        self.fc_tokens = nn.Linear(36000, 3000)  # Update to match GRU output size
 
         # Fully connected layers
-        self.lin1 = nn.Linear(3200, 1000)  # Adjust input dimension to 3200
+        self.lin1 = nn.Linear(6000, 1000)  # Concatenated reduced graph and token features
         self.lin11 = nn.Linear(1000, 500)
-        self.lin2 = nn.Linear(500, 2)  # 2 classes for binary classification
-
+        self.lin2 = nn.Linear(500, 2)  # Output 2 logits for binary classification
+    
     def forward(self, dataTokens=None, dataGraph=None):
+        x_graph = None  # Initialize x_graph
+        x_tokens = None  # Initialize x_tokens
+        
+        # Process graph data
         if dataGraph is not None:
-            features = dataGraph.ndata['type']  # Use 'type' as the feature input
-            edge_types = dataGraph.edata['label']  # Use 'label' as edge type
-            x = self.ggnn(dataGraph, features, edge_types)  # GGNN updates node features
-            x = global_max_pool(x, dataGraph)   # Pool node features into a graph-level feature
-            dataGraph.ndata['GGNNOUTPUT'] = x
+            features = dataGraph.ndata['type']
+            edge_types = dataGraph.edata['label']
+            x_graph = self.ggnn(dataGraph, features, edge_types)
+            print("GGNN output shape (before pooling):", x_graph.shape)  # Debugging print
+
+            # Pooling (mean pooling)
+            # x_graph = dgl.mean_nodes(dataGraph, 'type')  # Example pooling method
+            # print("GGNN output shape (after pooling):", x_graph.shape)  # Debugging print
+            
+            # Ensure x_graph has the correct shape
+            if x_graph.dim() == 1:  # If it returns [batch_size], make sure to reshape it
+                x_graph = x_graph.unsqueeze(1)  # Change shape to [batch_size, 1]
+            
+            # Reduce graph feature size
+            x_graph = F.relu(self.fc_graph(x_graph))
+        
+        # Process token data
+        if dataTokens is not None:
+            x_tokens = self.embed1(dataTokens)
+            x_tokens, _ = self.lstm1(x_tokens)
+            batch_size = x_tokens.size(0)
+            x_tokens = x_tokens.contiguous().view(batch_size, -1)
+            x_tokens = F.relu(self.fc_tokens(x_tokens))
+        
+        # Concatenate features if both are available
+        if x_graph is not None and x_tokens is not None:
+            x = torch.cat((x_graph, x_tokens), dim=1)
+        elif x_graph is not None:
+            x = x_graph  # Only graph features are present
         else:
-            batch_size = dataTokens.size(0)
-            x = torch.zeros(batch_size, 2000).to(dataTokens.device)
-
-        x1 = self.embed(dataTokens)
-        output1, hidden1 = self.lstm1(x1)
-        x1 = torch.cat((hidden1[0, :, :], hidden1[1, :, :], hidden1[2, :, :], hidden1[-3, :, :], hidden1[-2, :, :], hidden1[-1, :, :]), dim=1)
-
-        x = torch.cat([x, x1], dim=1)
+            x = x_tokens  # Only token features are present
 
         x = F.relu(self.lin1(x))
-        x = F.dropout(x, training=self.training, p=0.3)
         x = F.relu(self.lin11(x))
-        x = F.dropout(x, training=self.training, p=0.3)
-        x = F.relu(self.lin2(x))
+        x = self.lin2(x)
 
         return x
-
-
-    def unbatch_features(self, g):
-        x_i = []
-        h_i = []
-        max_len = -1
-        for g_i in dgl.unbatch(g):
-            x_i.append(g_i.ndata['type'])
-            h_i.append(g_i.ndata['GGNNOUTPUT'])
-            max_len = max(g_i.number_of_nodes(), max_len)
-        for i, (v, k) in enumerate(zip(x_i, h_i)):
-            if v.size(1) != self.input_dim:
-                v = F.pad(v, (0, self.input_dim - v.size(1)), value=0)
-            if k.size(1) != self.output_dim:
-                k = F.pad(k, (0, self.output_dim - k.size(1)), value=0)
-
-            x_i[i] = torch.cat(
-                (v, torch.zeros(size=(max_len - v.size(0), *(v.shape[1:])), requires_grad=v.requires_grad,
-                                device=v.device)), dim=0)
-            h_i[i] = torch.cat(
-                (k, torch.zeros(size=(max_len - k.size(0), *(k.shape[1:])), requires_grad=k.requires_grad,
-                                device=k.device)), dim=0)
-        return x_i, h_i
