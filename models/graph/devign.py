@@ -9,12 +9,6 @@ class ModelParser():
     hidden_size: int = 256  # GNN隐层向量维度
     layer_num: int = 5  # GNN层数
     num_classes: int = 2
-
-# features = g_batch.ndata['type']  # Use 'type' as the feature input
-# edge_types = g_batch.edata['label']  # Use 'label' as edge type
-# print("Features shape:", features.shape)
-# print("Edge types shape:", edge_types.shape)
-
 model_args = ModelParser()
 
 class DevignModel(nn.Module):
