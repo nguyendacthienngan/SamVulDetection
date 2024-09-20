@@ -8,90 +8,86 @@ class ModelParser():
     hidden_size: int = 256  # GNN隐层向量维度
     layer_num: int = 5  # GNN层数
     num_classes: int = 2
+
 model_args = ModelParser()
 
 class PhpNetGraphTokensCombine(nn.Module):
     def __init__(self):
         super(PhpNetGraphTokensCombine, self).__init__()
-        # Example LSTM layer; adjust parameters as needed
-        embedding_dim=768
-        vocab_size=50265
-        max_edge_types=6
-        input_dim = max_edge_types + model_args.vector_size
-        output_dim = model_args.hidden_size
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.max_edge_types = max_edge_types
+        embedding_dim = 768
+        vocab_size = 50265
+        max_edge_types = 6
+        num_steps=6
+        
+        # Set the correct dimensions
+        self.input_dim = max_edge_types + model_args.vector_size
+        self.output_dim = model_args.hidden_size  # Ensure this matches what you need
+        self.concat_dim = self.input_dim + self.output_dim  # 106 + 256 = 362
+
         # Embedding layer for tokens
         self.embedding = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embedding_dim)
 
         # Gated Graph Neural Network (GGNN)
-        self.ggnn = GatedGraphConv(in_feats=200, out_feats=6000, n_steps=3, n_etypes=6)
+        self.ggnn = GatedGraphConv(in_feats=self.input_dim, out_feats=self.output_dim,
+                                   n_steps=num_steps, n_etypes=max_edge_types)
 
         self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=12000, num_layers=1, batch_first=True)
         
         # Fully connected layers for token features
-        self.fc_tokens = nn.Linear(12000, 3000)  # Adjust the output dimension if necessary
-        
-        # Example GNN layers; adjust parameters as needed
-        self.fc_graph = nn.Linear(6000, 3000)  # Change this based on your actual output from GNN
+        # self.fc_tokens = nn.Linear(in_features=768, out_features=2)
+        self.fc_tokens = nn.Linear(in_features=12000, out_features=3000)  # Match the LSTM output size
+
+        # GNN layers
+        self.fc_graph = nn.Linear(in_features=256, out_features=3000)
 
         # Output layer for final classification
-        # Concatenated features (3000 from tokens + 3000 from graph = 6000)
-        self.output_layer = nn.Linear(6000, 2)  # Output for binary classification
-    
+        # self.output_layer = nn.Linear(2, 2)  # Outputting 2 logits for binary classification
+        self.output_layer = nn.Linear(6000, 2)  # Input size should be the sum of token and graph outputs
     def forward(self, dataTokens, dataGraph=None):
-        # Ensure dataTokens is correctly shaped: [batch_size, seq_len]
-        # Convert token IDs to embeddings if necessary
-        if dataTokens.ndim == 2:  # Check if dataTokens is [batch_size, seq_len]
-            dataTokens = self.embedding(dataTokens)  # Assuming you have an embedding layer
+        # Token embeddings
+        if dataTokens.ndim == 2:
+            dataTokens = self.embedding(dataTokens)
 
-        # Process token data through LSTM
-        lstm_out, _ = self.lstm(dataTokens)  # Check that input shape is [batch_size, seq_len, embedding_dim]
-        
-        # Pool LSTM output
-        x_tokens = lstm_out.mean(dim=1)  # Average pooling over the sequence length
+        # LSTM processing
+        lstm_out, _ = self.lstm(dataTokens)
+        x_tokens = lstm_out.mean(dim=1)
         print("Pooled token shape:", x_tokens.shape)  # Should be [batch_size, 12000]
-        
+
         # Reduce token feature size
-        x_tokens = F.relu(self.fc_tokens(x_tokens))
-        
+        x_tokens = F.relu(self.fc_tokens(x_tokens))  # Shape should be [batch_size, 3000]
+
         # Process graph data
         if dataGraph is not None:
-            features = dataGraph.ndata['type']  # Use 'type' as the feature input
-            edge_types = dataGraph.edata['label']  # Use 'label' as edge type
+            features = dataGraph.ndata['type']
+            edge_types = dataGraph.edata['label']
 
             outputs = self.ggnn(dataGraph, features, edge_types)
+            print(f'GGNN output shape: {outputs.shape}')
+
             dataGraph.ndata['GGNNOUTPUT'] = outputs
-            x_i, h_i = self.process_graph(dataGraph)  # Process the graph
-            
+            x_i, h_i = self.process_graph(dataGraph)
+
             # Pooling for graph data
-            if isinstance(h_i, list):  # Check if h_i is a list of tensors
-                x_graph = torch.stack([torch.mean(h, dim=0) for h in h_i])  # Process each tensor in the list
-            else:  # h_i is already a single tensor
-                x_graph = torch.mean(h_i, dim=0)
+            # if isinstance(h_i, list):
+            #     x_graph = torch.mean(torch.stack(h_i), dim=0)  # Average across graphs
+            # else:
+            #     x_graph = torch.mean(h_i, dim=0)  # If h_i is already a tensor
+            x_graph = dgl.mean_nodes(dataGraph, 'GGNNOUTPUT')  # Pool to [batch_size, 256]
 
-
-            # Ensure the dimension matches the expected input to the linear layer
-            if x_graph.shape[-1] != 6000:  # Check if the last dimension is 6000
-                # If not, you can either reshape or ensure the GGNN outputs the correct shape.
-                # Example fix: assuming you want to flatten x_graph or apply further processing:
-                print('x_graph.shape[-1] != 6000')
-                x_graph = torch.flatten(x_graph, start_dim=1)  # Flatten for fully connected layers
-                # Alternatively, you can add another linear layer here to map to the correct size
-
-            x_graph = F.relu(self.fc_graph(x_graph))  # Now pass it through the linear layer
+            # Ensure x_graph has the expected dimension
+            if x_graph.shape[-1] != 3000:
+                print(f'x_graph.shape[-1] != 3000, got {x_graph.shape[-1]}')
+                x_graph = F.relu(self.fc_graph(x_graph))  # Adjust to match size if necessary
 
             # Concatenate graph and token features
             combined_features = torch.cat((x_tokens, x_graph), dim=1)
         else:
-            # If no graph input, concatenate token features with a zero tensor to keep size consistent
-            zero_graph = torch.zeros_like(x_tokens)  # Create a zero tensor of same shape as x_tokens
-            combined_features = torch.cat((x_tokens, zero_graph), dim=1)  # Still (batch_size, 6000)        
-        
-        # Final output layer (define this layer in __init__)
-        output = self.output_layer(combined_features)  # Adjust based on your task
-        
+            zero_graph = torch.zeros(x_tokens.size(0), 3000, device=x_tokens.device)
+            combined_features = torch.cat((x_tokens, zero_graph), dim=1)
+
+        # Final output layer
+        output = self.output_layer(combined_features)
+
         return output
 
     def process_graph(self, g):

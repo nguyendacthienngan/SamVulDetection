@@ -1,0 +1,68 @@
+CombinedModel(
+  (clr_model): CLRModel(
+    (model): RobertaForSequenceClassification(
+      (roberta): RobertaModel(
+        (embeddings): RobertaEmbeddings(
+          (word_embeddings): Embedding(50265, 768, padding_idx=1)
+          (position_embeddings): Embedding(514, 768, padding_idx=1)
+          (token_type_embeddings): Embedding(1, 768)
+          (LayerNorm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (encoder): RobertaEncoder(
+          (layer): ModuleList(
+            (0-11): 12 x RobertaLayer(
+              (attention): RobertaAttention(
+                (self): RobertaSelfAttention(
+                  (query): Linear(in_features=768, out_features=768, bias=True)
+                  (key): Linear(in_features=768, out_features=768, bias=True)
+                  (value): Linear(in_features=768, out_features=768, bias=True)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                )
+                (output): RobertaSelfOutput(
+                  (dense): Linear(in_features=768, out_features=768, bias=True)
+                  (LayerNorm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                )
+              )
+              (intermediate): RobertaIntermediate(
+                (dense): Linear(in_features=768, out_features=3072, bias=True)
+                (intermediate_act_fn): GELUActivation()
+              )
+              (output): RobertaOutput(
+                (dense): Linear(in_features=3072, out_features=768, bias=True)
+                (LayerNorm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+                (dropout): Dropout(p=0.1, inplace=False)
+              )
+            )
+          )
+        )
+      )
+      (classifier): RobertaClassificationHead(
+        (dense): Linear(in_features=768, out_features=768, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (out_proj): Linear(in_features=768, out_features=2, bias=True)
+      )
+    )
+  )
+  (devign_model): DevignModel(
+    (ggnn): GatedGraphConv(
+      (linears): ModuleList(
+        (0-5): 6 x Linear(in_features=256, out_features=256, bias=True)
+      )
+      (gru): GRUCell(256, 256)
+    )
+    (conv_l1): Conv1d(256, 256, kernel_size=(3,), stride=(1,))
+    (maxpool1): MaxPool1d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
+    (conv_l2): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+    (maxpool2): MaxPool1d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+    (conv_l1_for_concat): Conv1d(362, 362, kernel_size=(3,), stride=(1,))
+    (maxpool1_for_concat): MaxPool1d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
+    (conv_l2_for_concat): Conv1d(362, 362, kernel_size=(1,), stride=(1,))
+    (maxpool2_for_concat): MaxPool1d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+    (mlp_z): Linear(in_features=362, out_features=1, bias=True)
+    (mlp_y): Linear(in_features=256, out_features=1, bias=True)
+    (sigmoid): Sigmoid()
+  )
+  (classifier): Linear(in_features=2, out_features=2, bias=True)
+)
