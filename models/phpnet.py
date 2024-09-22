@@ -75,9 +75,15 @@ class PhpNetGraphTokensCombine(nn.Module):
             x_graph = dgl.mean_nodes(dataGraph, 'GGNNOUTPUT')  # Pool to [batch_size, 256]
 
             # Ensure x_graph has the expected dimension
-            if x_graph.shape[-1] != 3000:
-                print(f'x_graph.shape[-1] != 3000, got {x_graph.shape[-1]}')
-                x_graph = F.relu(self.fc_graph(x_graph))  # Adjust to match size if necessary
+            print(f'x_graph.shape[-1] != 3000, got {x_graph.shape[-1]}')
+            x_graph = self.fc_graph(x_graph)  # Use fully connected layer to expand to 3000
+            x_graph = F.relu(x_graph)  # Apply activation function
+            print(f'Reshaped graph features: {x_graph.shape}')  # Should be [batch_size, 3000]
+            
+            # Ensure graph features have the same batch size as token features
+            if x_graph.size(0) != x_tokens.size(0):
+                x_graph = x_graph.repeat(x_tokens.size(0), 1)  # Repeat graph features to match token batch size
+                print(f'Repeated graph features: {x_graph.shape}')  # Should match [batch_size, 3000]
 
             # Concatenate graph and token features
             combined_features = torch.cat((x_tokens, x_graph), dim=1)
