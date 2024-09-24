@@ -80,11 +80,17 @@ class PhpNetGraphTokensCombine(nn.Module):
             x_graph = F.relu(x_graph)  # Apply activation function
             print(f'Reshaped graph features: {x_graph.shape}')  # Should be [batch_size, 3000]
             
+            
             # Ensure graph features have the same batch size as token features
-            if x_graph.size(0) != x_tokens.size(0):
-                x_graph = x_graph.repeat(x_tokens.size(0), 1)  # Repeat graph features to match token batch size
-                print(f'Repeated graph features: {x_graph.shape}')  # Should match [batch_size, 3000]
+            if x_graph.size(0) < x_tokens.size(0):
+                # Pad or repeat the graph features to match the token batch size
+                diff = x_tokens.size(0) - x_graph.size(0)
+                x_graph = torch.cat([x_graph, x_graph.new_zeros(diff, x_graph.size(1))], dim=0)
+                print(f'Padded graph features: {x_graph.shape}')  # Now should match [batch_size, 3000]
 
+            elif x_graph.size(0) > x_tokens.size(0):
+                x_graph = x_graph[:x_tokens.size(0), :]  # Truncate graph features if they exceed the token batch size
+                print(f'Truncated graph features: {x_graph.shape}')
             # Concatenate graph and token features
             combined_features = torch.cat((x_tokens, x_graph), dim=1)
         else:
