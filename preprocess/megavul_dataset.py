@@ -56,13 +56,15 @@ class InputFeatures(object):
                  graph_features=None,
                  idx=None,
                  label=None,
-                 attention_mask=None):
+                 attention_mask=None,
+                 raw_code=None):
         self.sequence_tokens = sequence_tokens  # Tokens for sequence data
         self.sequence_ids = sequence_ids        # Token IDs for sequence data
         self.graph_features = graph_features    # Features for graph data
         self.idx = str(idx)                     # Unique identifier
         self.label = label                      # Label for classification
         self.attention_mask =attention_mask
+        self.raw_code=raw_code
 
 
 def create_graph_from_json(data_item):
@@ -185,6 +187,7 @@ def convert_examples_to_features(js, tokenizer, args, idx, label):
     return InputFeatures(sequence_tokens=source_tokens,
                          sequence_ids=input_ids,
                          attention_mask=attention_mask,  # Add the attention mask here
+                         raw_code=code,  # Return raw code for explainer
                          idx=idx,
                          label=label)
 
@@ -212,6 +215,7 @@ class MegaVulDataset(Dataset):
         return {
             'sequence_ids': sequence_features.sequence_ids,
             'attention_mask': sequence_features.attention_mask,
+            'raw_code': sequence_features.raw_code,  # Include raw code in the batch
             'graph_features': graph_features,
             'label': label
         }
