@@ -4,7 +4,7 @@ import json
 import os
 import torch
 
-from dig.xgraph.method import DeepLIFT
+# from dig.xgraph.method import DeepLIFT
 from transformers_interpret import SequenceClassificationExplainer
 from transformers import RobertaTokenizer
 from torch.optim.lr_scheduler import StepLR
@@ -57,11 +57,11 @@ def store_explanations(epoch, batch_idx, sequence_explanations, graph_explanatio
     # Store graph explanations if available
     if graph_explanations is not None:
         # Save edge masks and other graph explanations as needed
-        edge_masks_file_path = os.path.join(epoch_dir, f'graph_edge_masks_batch_{batch_idx}.json')
-        save_to_file(graph_explanations['edge_masks'], edge_masks_file_path)
+        # edge_masks_file_path = os.path.join(epoch_dir, f'graph_edge_masks_batch_{batch_idx}.json')
+        # save_to_file(graph_explanations['edge_masks'], edge_masks_file_path)
 
-        node_idx_file_path = os.path.join(epoch_dir, f'graph_node_idx_batch_{batch_idx}.json')
-        save_to_file(graph_explanations['node_idx'], node_idx_file_path)
+        node_idx_file_path = os.path.join(epoch_dir, f'graph_node_attributions_batch_{batch_idx}.json')
+        save_to_file(graph_explanations['node_attributions'], node_idx_file_path)
     
     # Store node attributions if provided
     if node_attributions is not None:
@@ -136,7 +136,7 @@ def explanation_loss(sequence_explanations, graph_explanations, model_outputs, l
         # graph_loss = graph_explanation_loss(graph_explanations['node_attributions'], model_outputs, labels)
 
         # Unpack graph explanations to get edge masks and node attributions
-        edge_masks, node_attributions = graph_explanations
+        node_attributions = graph_explanations['node_attributions']
 
         # Calculate graph explanation loss using node attributions
         graph_loss = graph_explanation_loss(node_attributions, model_outputs, labels)
@@ -188,21 +188,17 @@ def explain_graph_outputs(model, outputs, g_batch, device):
         node_idx = torch.argmax(outputs[i], dim=0).unsqueeze(0).to(device)
 
         # Generate edge explanations
-        edge_masks, hard_edge_masks, related_preds = graph_explainer(node_features, edge_index, node_idx=node_idx, num_classes=num_classes)
-        
-        
-        # Check the shapes of edge_masks
-        print(f"Edge masks shape: {edge_masks.shape}")
+        results = graph_explainer(node_features, edge_index)
 
-        edge_explanations.append(edge_mask)
+        node_attributions = results.sort(descending=True).indices.cpu()
 
         # Compute node attributions from edge masks
-        node_attribution = compute_node_attributions(edge_mask, g.edges())
-        node_explanations.append(node_attribution)
+        # node_attribution = compute_node_attributions(edge_mask, g.edges())
+        node_explanations.append(node_attributions)
 
     model.set_explainer_mode(False)
 
-    return edge_explanations, node_explanations
+    return node_explanations
 
 # def explain_graph_outputs(model, outputs, g_batch, device):
 #     # g_batch = g_batch.to(device)
@@ -351,12 +347,11 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
 
             # Generate new graph explanations using DeepLIFT (with node_idx based on outputs)
             if graph_inputs is not None:
-                edge_masks, node_attributions = explain_graph_outputs(
+                node_explanations = explain_graph_outputs(
                     model.devign_model, outputs, g_batch=graph_inputs, device=device
                 )
                 graph_explanations = {
-                    'edge_masks': edge_masks.tolist(),
-                    'node_attributions': node_attributions  # Store node attributions here
+                    'node_attributions': node_explanations  # Store node attributions here
                 }
             else:
                 graph_explanations = None
@@ -381,7 +376,7 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
         print(f"Epoch {epoch + 1}/{args['epoch']}, Average Loss: {avg_loss:.4f}")
 
         # Save the model after each epoch
-        model_name = 'PhpNetGraphTokensCombine' if isinstance(model, PhpNetGraphTokensCombine) else 'CombinedModel'
+        model_name = 'PhpNetGraphTokensCombine' if isinstance(model, PhpNetGraphTokensCombine) else 'CombinedModelExp'
         model_path = os.path.join(save_dir, f'{model_name}_epoch_{epoch + 1}.pth')
         torch.save(model.state_dict(), model_path)
         print(f"Model saved to {model_path}")

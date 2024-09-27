@@ -74,20 +74,28 @@ class DevignModel(nn.Module):
 
             # Adjust the outputs to match the shape (batch_size, num_classes)
             try:
-                batch_size = 16
-                # aligned_outputs = outputs.view(16, 2)  # This needs to be corrected
-                num_batches = outputs.shape[0] // batch_size
-                remainder = outputs.shape[0] % batch_size
+                valid_batch_size = 16
+                # # aligned_outputs = outputs.view(16, 2)  # This needs to be corrected
+                # num_batches = outputs.shape[0] // batch_size
+                # remainder = outputs.shape[0] % batch_size
 
-                if remainder > 0:
-                    # Add an extra batch for the last incomplete set
-                    outputs_for_batch = outputs.view(num_batches + 1, batch_size, -1)
-                    outputs_for_batch[-1] = outputs[-remainder:]  # Last batch with the remaining outputs
-                else:
-                    outputs_for_batch = outputs.view(num_batches, batch_size, -1)
+                # if remainder > 0:
+                #     # Add an extra batch for the last incomplete set
+                #     outputs_for_batch = outputs.view(num_batches + 1, batch_size, -1)
+                #     outputs_for_batch[-1] = outputs[-remainder:]  # Last batch with the remaining outputs
+                # else:
+                #     outputs_for_batch = outputs.view(num_batches, batch_size, -1)
 
+                # aggregated_outputs = outputs_for_batch.mean(dim=1)
+                # return aggregated_outputs
+                # Assuming you want to keep a maximum number of batches
+                max_batches = outputs.shape[0] // valid_batch_size
+                outputs = outputs[:max_batches * valid_batch_size]  # Trim to fit
+
+                outputs_for_batch = outputs.view(-1, valid_batch_size, outputs.size(1))  # Dynamic batch sizing
                 aggregated_outputs = outputs_for_batch.mean(dim=1)
                 return aggregated_outputs
+
             except RuntimeError as e:
                 print(f"Error reshaping outputs: {e}")
                 print(f"Output size: {outputs.size()}")
@@ -142,41 +150,5 @@ class DevignModel(nn.Module):
                                                device=v.device)), dim=0)
             h_i[i] = torch.cat((k, torch.zeros(size=(max_len - k.size(0), *(k.shape[1:])), requires_grad=k.requires_grad,
                                                device=k.device)), dim=0)
-
-        return x_i, h_i
-
-    def unbatch_features_with_batch(self, node_features, ggnn_outputs, batch=None):
-        """
-        Refactored unbatch_features to handle node_features and GGNN outputs directly.
-        Args:
-            node_features: The original node features.
-            ggnn_outputs: The outputs from the GGNN.
-            batch: Optional; a tensor representing the batch indices, used in explainer mode.
-        """
-        x_i = []
-        h_i = []
-        max_len = -1
-
-        for i in range(len(node_features)):
-            x_i.append(node_features[i])
-            h_i.append(ggnn_outputs[i])
-            max_len = max(node_features[i].size(0), max_len)
-
-        for i, (v, k) in enumerate(zip(x_i, h_i)):
-            if v.size(1) != self.input_dim:
-                v = F.pad(v, (0, self.input_dim - v.size(1)), value=0)
-            if k.size(1) != self.output_dim:
-                k = F.pad(k, (0, self.output_dim - k.size(1)), value=0)
-
-            if batch is not None:
-                x_i[i] = torch.cat((v, torch.zeros(size=(max_len - v.size(0), *(v.shape[1:])), requires_grad=v.requires_grad,
-                                                   device=v.device)), dim=0)
-                h_i[i] = torch.cat((k, torch.zeros(size=(max_len - k.size(0), *(k.shape[1:])), requires_grad=k.requires_grad,
-                                                   device=k.device)), dim=0)
-            else:
-                x_i[i] = torch.cat((v, torch.zeros(size=(max_len - v.size(0), *(v.shape[1:])), requires_grad=v.requires_grad,
-                                                   device=v.device)), dim=0)
-                h_i[i] = torch.cat((k, torch.zeros(size=(max_len - k.size(0), *(k.shape[1:])), requires_grad=k.requires_grad,
-                                                   device=k.device)), dim=0)
 
         return x_i, h_i
