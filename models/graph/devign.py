@@ -24,6 +24,7 @@ class DevignModel(nn.Module):
         self.output_dim = output_dim
         self.max_edge_types = max_edge_types
         self.num_timesteps = num_steps
+        self.num_classes = model_args.num_classes  # Assuming binary classification
 
         # Initialize both versions of GatedGraphConv
         self.ggnn = DGLGatedGraphConv(in_feats=input_dim, out_feats=output_dim, n_steps=num_steps, n_etypes=max_edge_types)
@@ -55,10 +56,11 @@ class DevignModel(nn.Module):
         """
         self.is_explainer_mode = mode
 
-    def forward(self, node_features, edge_index, batch, edge_types=None):
+    def forward(self, x, edge_index, batch, edge_types=None):
         """
         Refactored forward function to accept node_features and edge_index directly.
         """
+        node_features = x
         # Convert edge_index to a DGL graph
         src, dst = edge_index  # assuming edge_index is a tuple of (source, destination)
         graph = dgl.graph((src, dst), num_nodes=node_features.size(0))
@@ -67,9 +69,30 @@ class DevignModel(nn.Module):
             # Use PyTorch Geometric GatedGraphConv for explainer mode
             outputs = self.ggnn_exp(node_features, edge_index)
 
+            # Debug: Check the shape of the output
+            print(f"Original outputs shape: {outputs.shape}")
+
             # Adjust the outputs to match the shape (batch_size, num_classes)
-            aligned_outputs = outputs.view(2, 2)
-            return aligned_outputs
+            try:
+                batch_size = 16
+                # aligned_outputs = outputs.view(16, 2)  # This needs to be corrected
+                num_batches = outputs.shape[0] // batch_size
+                remainder = outputs.shape[0] % batch_size
+
+                if remainder > 0:
+                    # Add an extra batch for the last incomplete set
+                    outputs_for_batch = outputs.view(num_batches + 1, batch_size, -1)
+                    outputs_for_batch[-1] = outputs[-remainder:]  # Last batch with the remaining outputs
+                else:
+                    outputs_for_batch = outputs.view(num_batches, batch_size, -1)
+
+                aggregated_outputs = outputs_for_batch.mean(dim=1)
+                return aggregated_outputs
+            except RuntimeError as e:
+                print(f"Error reshaping outputs: {e}")
+                print(f"Output size: {outputs.size()}")
+                # Return the original outputs for debugging purposes
+                return outputs
             # x_i, h_i = self.unbatch_features_with_batch(node_features, outputs, batch)
         else:
             # Use DGL GatedGraphConv for regular mode

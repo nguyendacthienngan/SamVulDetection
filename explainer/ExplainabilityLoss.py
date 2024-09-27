@@ -164,6 +164,7 @@ def explain_graph_outputs(model, outputs, g_batch, device):
     edge_index = g_batch.edges() # This could return a tuple (src, dst)
 
     model.set_explainer_mode(True)
+    num_classes = model.num_classes  # Ensure this is set in your model
     # Convert the edge_index components to tensors
     if isinstance(edge_index, tuple):
         print(f'edge_index is a tuple')
@@ -179,12 +180,15 @@ def explain_graph_outputs(model, outputs, g_batch, device):
 
     graph_explainer = DeepLIFT(model, explain_graph=False) # false because node classification
     for i, g in enumerate(dgl.unbatch(g_batch)):
-        print(outputs.shape)
+        # print(outputs.shape) #[16,2]
 
-        node_idx = torch.argmax(outputs[i], dim=0).item()
+        # node_idx = torch.argmax(outputs[i], dim=0).item()
         
+        # Use tensor instead of item for node_idx
+        node_idx = torch.argmax(outputs[i], dim=0).unsqueeze(0).to(device)
+
         # Generate edge explanations
-        edge_masks, hard_edge_masks, related_preds = graph_explainer(node_features, edge_index, node_idx=node_idx)
+        edge_masks, hard_edge_masks, related_preds = graph_explainer(node_features, edge_index, node_idx=node_idx, num_classes=num_classes)
         
         
         # Check the shapes of edge_masks
@@ -287,11 +291,6 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             attention_mask = batch['attention_mask']
             graph_inputs = batch['graph_features']
             labels = batch['label'].to(device).long()  # Ensure labels are of dtype long (for classification)
-
-            # Assuming you have sequence_inputs, attention_mask, and graph_inputs prepared
-            print(f"Sequence inputs shape: {sequence_inputs.shape}")  # Should be [batch_size, seq_length]
-            print(f"Attention mask shape: {attention_mask.shape}")    # Should match sequence_inputs
-
             if graph_inputs is not None:
                 # print(f"Graph inputs shape: {graph_inputs.shape}")      # Make sure this is consistent in terms of batch size
                 graph_inputs = graph_inputs.to(device)
