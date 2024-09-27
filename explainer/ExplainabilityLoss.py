@@ -78,34 +78,60 @@ def load_explanations(epoch, batch_idx, expl_dir='explanations'):
         return None
     
     epoch_dir = os.path.join(expl_dir, f'epoch_{epoch}')
-    explanation_file = os.path.join(epoch_dir, f'batch_{batch_idx}.json')
     
-    if os.path.exists(explanation_file):
-        with open(explanation_file, 'r') as f:
-            explanations = json.load(f)
-        print(f"Loaded explanations from {explanation_file}")
-        return explanations
-    else:
-        print(f"No explanations found for batch {batch_idx} in epoch {epoch}, file: {explanation_file}")
-        return None
+    # Load sequence explanations
+    sequence_file = os.path.join(epoch_dir, f'sequence_explanations_batch_{batch_idx}.json')
+    graph_file = os.path.join(epoch_dir, f'graph_node_attributions_batch_{batch_idx}.json')
 
+    explanations = {}
+    
+    if os.path.exists(sequence_file):
+        with open(sequence_file, 'r') as f:
+            explanations['sequence_explanations'] = json.load(f)
+        print(f"Loaded sequence explanations from {sequence_file}")
+    else:
+        print(f"No sequence explanations found for batch {batch_idx} in epoch {epoch}, file: {sequence_file}")
+    
+    # Load graph explanations if available
+    if os.path.exists(graph_file):
+        with open(graph_file, 'r') as f:
+            explanations['graph_explanations'] = json.load(f)
+        print(f"Loaded graph explanations from {graph_file}")
+    else:
+        print(f"No graph explanations found for batch {batch_idx} in epoch {epoch}, file: {graph_file}")
+
+    return explanations if explanations else None
 
 def sequence_explanation_loss(importance_scores, model_outputs, labels):
-    """
-    Calculate the loss based on sequence explanation importance scores.
-    
-    Penalize more important tokens when the model makes incorrect predictions.
-    """
-    # Convert model outputs and labels to probabilities or logits if needed
-    model_outputs = torch.softmax(model_outputs, dim=1)  # Assuming binary classification
-    labels = labels.float()
+    seq_loss = torch.tensor(0.0, device=model_outputs.device)  # Initialize as tensor
 
-    seq_loss = 0
-    for i, score in enumerate(importance_scores):
+    for i, scores in enumerate(importance_scores):
+        # Extract only the numeric scores
+        numeric_scores = [score[1] for score in scores]  # Get only the numeric part
+        
+        # Ensure the numeric_scores are in tensor format
+        numeric_scores_tensor = torch.tensor(numeric_scores, device=model_outputs.device)
+
+        # Calculate error (assuming model_outputs and labels are tensors)
         error = torch.abs(model_outputs[i] - labels[i])  # Calculate error
-        seq_loss += score * error  # Penalize based on importance score and error magnitude
-    
+
+        # If no numeric scores, skip this instance
+        if numeric_scores_tensor.numel() == 0:
+            print(f"Warning: No valid scores for instance {i}. Skipping.")
+            continue
+
+        # Aggregate numeric scores (e.g., mean across tokens)
+        if numeric_scores_tensor.shape[0] != 2:
+            numeric_scores_tensor = numeric_scores_tensor.mean()  # Use mean if more than 2
+        else:
+            numeric_scores_tensor = numeric_scores_tensor.sum()  # If exactly 2, sum them
+
+        # Compute the weighted error based on numeric scores
+        weighted_error = numeric_scores_tensor * error.mean()  # Average score for loss calculation
+        seq_loss += weighted_error
+
     return seq_loss.mean()  # Return the average loss over the batch
+
 
 
 def graph_explanation_loss(node_importance, model_outputs, labels):
@@ -130,36 +156,22 @@ def explanation_loss(sequence_explanations, graph_explanations, model_outputs, l
     """
     Combine sequence and graph explanation losses.
     """
-    # Calculate sequence explanation loss
-    sequence_loss = sequence_explanation_loss(sequence_explanations['importance_scores'], model_outputs, labels)
-    
+    # Calculate sequence explanation loss (assuming sequence_explanations is a list of importance scores)
+    sequence_loss = sequence_explanation_loss(sequence_explanations, model_outputs, labels)
+    print(f"sequence_loss: {sequence_loss}")
+
     # Initialize graph_loss to zero if graph_explanations is None
     graph_loss = 0.0
     if graph_explanations is not None:
-        # Calculate graph explanation loss
-        # graph_loss = graph_explanation_loss(graph_explanations['node_attributions'], model_outputs, labels)
-
         # Unpack graph explanations to get edge masks and node attributions
         node_attributions = graph_explanations['node_attributions']
 
         # Calculate graph explanation loss using node attributions
         graph_loss = graph_explanation_loss(node_attributions, model_outputs, labels)
-
     
     # Combine both losses
     total_explanation_loss = sequence_loss + graph_loss
     return total_explanation_loss
-
-# def compute_node_attributions(edge_masks, edge_index):
-#     # Initialize a tensor to accumulate node attributions
-#     node_attributions = torch.zeros(max_node_index, device=edge_masks.device)  # Adjust max_node_index as needed
-    
-#     for edge, mask in zip(edge_index, edge_masks):
-#         src, dst = edge  # Extract source and destination nodes from the edge index
-#         node_attributions[src] += mask  # Aggregate attribution to the source node
-#         node_attributions[dst] += mask  # You can adjust this logic based on your needs
-
-#     return node_attributions
 
 def explain_graph_outputs(model, outputs, g_batch, device):
     edge_explanations = []
@@ -204,38 +216,6 @@ def explain_graph_outputs(model, outputs, g_batch, device):
 
     return node_explanations
 
-# def explain_graph_outputs(model, outputs, g_batch, device):
-#     # g_batch = g_batch.to(device)
-#     # node_features = g_batch.ndata['type'].to(device)
-#     edge_index = g_batch.edges()
-#     node_idx = torch.argmax(outputs, dim=1).item()
-    
-#     graph_explainer = DeepLift(model)
-
-#     # Initialize lists to store explanations for each graph in the batch
-#     edge_explanations = []
-#     node_explanations = []
-#     # # Compute node attributions from edge masks if necessary
-#     # node_attributions = compute_node_attributions(edge_masks, edge_index)
-#     for i, node_idx in enumerate(node_idxs):
-#         # Extract the graph corresponding to the current batch index
-#         current_g = dgl.unbatch(g_batch)[i]
-
-#         # Generate explanation for the current graph and node index
-#         edge_mask = graph_explainer.attribute(
-#             current_g, node_idx=node_idx.item(), target=node_idx.item()
-#         )
-#         # Calculate node attributions if supported by your implementation
-#         node_mask = graph_explainer.attribute(
-#             current_g, node_idx=node_idx.item(), target=node_idx.item(), return_node_attributions=True
-#         )
-
-#         # Store the explanations for this sample
-#         edge_explanations.append(edge_mask)
-#         node_explanations.append(node_mask)
-
-#     return edge_explanations, node_explanations
-
 def explain_sequence_outputs(model, sequence_inputs, predicted_class_indices, tokenizer):
     sequence_explanations = []
     
@@ -250,14 +230,11 @@ def explain_sequence_outputs(model, sequence_inputs, predicted_class_indices, to
         # Explain the predicted output (i.e., argmax result for each input)
         explanation_result = explainer(text, index=predicted_class_indices[i])
 
-        # If explanation_result is a list of importance scores, directly append it
-        if isinstance(explanation_result, list):
-            sequence_explanations.append(explanation_result)
-        else:
-            # If explanation_result has a get_importance_scores method, call it
-            sequence_explanations.append(explanation_result.get_importance_scores())
+        # Append the list of importance scores directly
+        sequence_explanations.append(explanation_result)
 
     return sequence_explanations
+
 
 def train(args, device, train_loader, val_loader, model, optimizer, loss_function):
     tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
@@ -317,7 +294,11 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             classification_loss  = loss_function(outputs, labels)
 
             # Load explanations from previous epoch
-            prev_explanations = load_explanations(epoch - 1, batch_idx, expl_dir)
+            if test_mode is True:
+                load_epoch = epoch
+            else:
+                load_epoch = epoch  -1
+            prev_explanations = load_explanations(load_epoch, batch_idx, expl_dir)
             expl_loss = 0.0
             if prev_explanations:
                 sequence_explanations = prev_explanations['sequence_explanations']
@@ -367,7 +348,8 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             # Print progress every 10 batches
             if batch_idx % 10 == 0:
                 print(f"Epoch [{epoch + 1}/{args['epoch']}], Step [{batch_idx + 1}/{len(train_loader)}], Loss: {total_loss_combined.item():.4f}")
-            break
+            if test_mode is True:
+                break
         avg_loss = total_loss / len(train_loader)
 
         # for name, param in model.named_parameters():
