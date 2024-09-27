@@ -27,7 +27,7 @@ class CombinedModel(nn.Module):
             # Stack to create edge_index in shape (2, num_edges)
             edge_index = torch.stack([src, dst], dim=0)
 
-            graph_outputs = self.devign_model(node_features, edge_index, edge_types)
+            graph_outputs = self.devign_model(node_features, edge_index, batch=graph_inputs, edge_types=edge_types)
 
             # graph_outputs = self.devign_model(graph_inputs)
             

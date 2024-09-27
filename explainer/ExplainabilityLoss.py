@@ -163,6 +163,7 @@ def explain_graph_outputs(model, outputs, g_batch, device):
     node_features = g_batch.ndata['type'].to(device) # Ensure this is the right feature tensor
     edge_index = g_batch.edges() # This could return a tuple (src, dst)
 
+    model.set_explainer_mode(True)
     # Convert the edge_index components to tensors
     if isinstance(edge_index, tuple):
         print(f'edge_index is a tuple')
@@ -176,14 +177,14 @@ def explain_graph_outputs(model, outputs, g_batch, device):
     print(f"Edge index shape: {edge_index.shape}")
 
 
-    graph_explainer = DeepLIFT(model, explain_graph=false) # false because node classification
+    graph_explainer = DeepLIFT(model, explain_graph=False) # false because node classification
     for i, g in enumerate(dgl.unbatch(g_batch)):
         print(outputs.shape)
 
         node_idx = torch.argmax(outputs[i], dim=0).item()
         
         # Generate edge explanations
-        edge_masks, hard_edge_masks, related_preds = graph_explainer(node_features, edge_index)
+        edge_masks, hard_edge_masks, related_preds = graph_explainer(node_features, edge_index, node_idx=node_idx)
         
         
         # Check the shapes of edge_masks
@@ -194,6 +195,8 @@ def explain_graph_outputs(model, outputs, g_batch, device):
         # Compute node attributions from edge masks
         node_attribution = compute_node_attributions(edge_mask, g.edges())
         node_explanations.append(node_attribution)
+
+    model.set_explainer_mode(False)
 
     return edge_explanations, node_explanations
 
