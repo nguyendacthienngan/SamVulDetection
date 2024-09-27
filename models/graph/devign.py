@@ -75,20 +75,6 @@ class DevignModel(nn.Module):
             # Adjust the outputs to match the shape (batch_size, num_classes)
             try:
                 valid_batch_size = 16
-                # # aligned_outputs = outputs.view(16, 2)  # This needs to be corrected
-                # num_batches = outputs.shape[0] // batch_size
-                # remainder = outputs.shape[0] % batch_size
-
-                # if remainder > 0:
-                #     # Add an extra batch for the last incomplete set
-                #     outputs_for_batch = outputs.view(num_batches + 1, batch_size, -1)
-                #     outputs_for_batch[-1] = outputs[-remainder:]  # Last batch with the remaining outputs
-                # else:
-                #     outputs_for_batch = outputs.view(num_batches, batch_size, -1)
-
-                # aggregated_outputs = outputs_for_batch.mean(dim=1)
-                # return aggregated_outputs
-                # Assuming you want to keep a maximum number of batches
                 max_batches = outputs.shape[0] // valid_batch_size
                 outputs = outputs[:max_batches * valid_batch_size]  # Trim to fit
 

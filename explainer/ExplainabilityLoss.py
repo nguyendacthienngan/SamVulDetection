@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import json
 import os
-import torch
 
 # from dig.xgraph.method import DeepLIFT
 from transformers_interpret import SequenceClassificationExplainer
@@ -21,20 +20,34 @@ explanations/
     ...
 
 """
+def convert_tensors_to_lists(data):
+    """
+    Recursively converts all tensors in a structure (dict, list, etc.) to lists.
+    """
+    if isinstance(data, torch.Tensor):
+        return data.tolist()  # Convert tensor to list
+    elif isinstance(data, dict):
+        return {key: convert_tensors_to_lists(value) for key, value in data.items()}  # Recursively apply for dict
+    elif isinstance(data, list):
+        return [convert_tensors_to_lists(item) for item in data]  # Recursively apply for list
+    elif isinstance(data, tuple):
+        return tuple(convert_tensors_to_lists(item) for item in data)  # Recursively apply for tuple
+    else:
+        return data  # Return the data as is if it's not a tensor
+
 def save_to_file(data, file_path):
     """
-    Save data to a JSON file.
-    
-    Parameters:
-    - data: The data to save (can be a dict, list, etc.).
-    - file_path (str): The path to the file where the data will be saved.
+    Save data to a JSON file. If the data contains tensors, convert them to lists first.
     """
+    # Convert all tensors in the structure to lists
+    data = convert_tensors_to_lists(data)
+    
+    # Write to the JSON file
     with open(file_path, 'w') as f:
         json.dump(data, f, indent=4)  # Use indent for pretty printing
     print(f"Data saved to {file_path}")
-    
 
-def store_explanations(epoch, batch_idx, sequence_explanations, graph_explanations, expl_dir, node_attributions=None):
+def store_explanations(epoch, batch_idx, sequence_explanations, graph_explanations, expl_dir):
     """
     Store explanations for a given epoch and batch.
 
@@ -56,18 +69,9 @@ def store_explanations(epoch, batch_idx, sequence_explanations, graph_explanatio
 
     # Store graph explanations if available
     if graph_explanations is not None:
-        # Save edge masks and other graph explanations as needed
-        # edge_masks_file_path = os.path.join(epoch_dir, f'graph_edge_masks_batch_{batch_idx}.json')
-        # save_to_file(graph_explanations['edge_masks'], edge_masks_file_path)
-
-        node_idx_file_path = os.path.join(epoch_dir, f'graph_node_attributions_batch_{batch_idx}.json')
-        save_to_file(graph_explanations['node_attributions'], node_idx_file_path)
+        node_attributions_file_path = os.path.join(epoch_dir, f'graph_node_attributions_batch_{batch_idx}.json')
+        save_to_file(graph_explanations['node_attributions'], node_attributions_file_path)
     
-    # Store node attributions if provided
-    if node_attributions is not None:
-        node_attributions_file_path = os.path.join(epoch_dir, f'node_attributions_batch_{batch_idx}.json')
-        save_to_file(node_attributions, node_attributions_file_path)
-
         
 def load_explanations(epoch, batch_idx, expl_dir='explanations'):
     if epoch < 0:  # No previous explanations available if it's the first epoch
@@ -82,7 +86,7 @@ def load_explanations(epoch, batch_idx, expl_dir='explanations'):
         print(f"Loaded explanations from {explanation_file}")
         return explanations
     else:
-        print(f"No explanations found for batch {batch_idx} in epoch {epoch}")
+        print(f"No explanations found for batch {batch_idx} in epoch {epoch}, file: {explanation_file}")
         return None
 
 
@@ -146,16 +150,16 @@ def explanation_loss(sequence_explanations, graph_explanations, model_outputs, l
     total_explanation_loss = sequence_loss + graph_loss
     return total_explanation_loss
 
-def compute_node_attributions(edge_masks, edge_index):
-    # Initialize a tensor to accumulate node attributions
-    node_attributions = torch.zeros(max_node_index, device=edge_masks.device)  # Adjust max_node_index as needed
+# def compute_node_attributions(edge_masks, edge_index):
+#     # Initialize a tensor to accumulate node attributions
+#     node_attributions = torch.zeros(max_node_index, device=edge_masks.device)  # Adjust max_node_index as needed
     
-    for edge, mask in zip(edge_index, edge_masks):
-        src, dst = edge  # Extract source and destination nodes from the edge index
-        node_attributions[src] += mask  # Aggregate attribution to the source node
-        node_attributions[dst] += mask  # You can adjust this logic based on your needs
+#     for edge, mask in zip(edge_index, edge_masks):
+#         src, dst = edge  # Extract source and destination nodes from the edge index
+#         node_attributions[src] += mask  # Aggregate attribution to the source node
+#         node_attributions[dst] += mask  # You can adjust this logic based on your needs
 
-    return node_attributions
+#     return node_attributions
 
 def explain_graph_outputs(model, outputs, g_batch, device):
     edge_explanations = []
@@ -362,14 +366,15 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
 
             # Print progress every 10 batches
             if batch_idx % 10 == 0:
-                print(f"Epoch [{epoch + 1}/{args['epoch']}], Step [{batch_idx + 1}/{len(train_loader)}], Loss: {loss.item():.4f}")
+                print(f"Epoch [{epoch + 1}/{args['epoch']}], Step [{batch_idx + 1}/{len(train_loader)}], Loss: {total_loss_combined.item():.4f}")
+            break
         avg_loss = total_loss / len(train_loader)
 
-        for name, param in model.named_parameters():
-            if param.grad is not None:
-                print(f"Gradients for {name}: {param.grad.mean().item()}")
-            else:
-                print(f"Gradients for {name}: None")
+        # for name, param in model.named_parameters():
+        #     if param.grad is not None:
+        #         print(f"Gradients for {name}: {param.grad.mean().item()}")
+        #     else:
+        #         print(f"Gradients for {name}: None")
 
 
         train_losses.append(avg_loss)

@@ -1,0 +1,30 @@
+Epoch: 0
+batch_idx: 0
+edge_index is a tuple
+Node features shape: torch.Size([1627, 1])
+Edge index shape: torch.Size([2, 12040])
+Original outputs shape: torch.Size([3254, 256])
+Original outputs shape: torch.Size([3254, 256])
+Original outputs shape: torch.Size([3254, 256])
+Original outputs shape: torch.Size([3254, 256])
+Data saved to /home/ngan/Documents/SamVulDetection/saved_explains/epoch_0/sequence_explanations_batch_0.json
+Data saved to /home/ngan/Documents/SamVulDetection/saved_explains/epoch_0/graph_node_attributions_batch_0.json
+Epoch [1/10], Step [1/1887], Loss: 0.6266
+Epoch 1/10, Average Loss: 0.0003
+Model saved to /home/ngan/Documents/SamVulDetection/saved_models/CombinedModelExp_epoch_1.pth
+
+/home/ngan/.local/lib/python3.8/site-packages/sklearn/metrics/_classification.py:1471: UndefinedMetricWarning: Precision is ill-defined and being set to 0.0 due to no predicted samples. Use `zero_division` parameter to control this behavior.
+  _warn_prf(average, modifier, msg_start, len(result))
+
+Predictions distribution: {0: 50932}
+Validation Accuracy: 0.9484, Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+Epoch 1/10, Validation Loss: 0.6694
+Epoch 1: Learning rate: [1e-05]
+Best model saved to /home/ngan/Documents/SamVulDetection/saved_models/best_model.pth with validation loss: 0.6694
+Epoch: 1
+batch_idx: 0
+
+/home/ngan/.local/lib/python3.8/site-packages/dgl/backend/pytorch/tensor.py:445: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  assert input.numel() == input.storage().size(), (
+
+No explanations found for batch 0 in epoch 0
