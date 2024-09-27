@@ -133,23 +133,37 @@ def sequence_explanation_loss(importance_scores, model_outputs, labels):
     return seq_loss.mean()  # Return the average loss over the batch
 
 
-
 def graph_explanation_loss(node_importance, model_outputs, labels):
     """
     Calculate the loss based on graph explanation node importance.
     
     Penalize more important nodes when the model makes incorrect predictions.
     """
-    # Convert model outputs and labels to probabilities or logits if needed
     model_outputs = torch.softmax(model_outputs, dim=1)
     labels = labels.float()
 
     graph_loss = 0
     for i, node_score in enumerate(node_importance):
+        if isinstance(node_score, list):
+            node_score = torch.tensor(node_score, device=model_outputs.device)
+
+        # Skip if no importance
+        if node_score.sum() == 0:
+            continue
+
+        # Calculate error
         error = torch.abs(model_outputs[i] - labels[i])
-        graph_loss += node_score * error  # Penalize based on node importance and error magnitude
-    
-    return graph_loss.mean()  # Return the average loss over the batch
+
+        # Normalize the node score
+        norm_node_score = torch.sigmoid(node_score) / (torch.sum(node_score) + 1e-8)
+
+        print(f'Node Score: {node_score}, Error: {error.mean()}, Graph Loss Increment: {norm_node_score.mean() * error.mean()}')
+
+        # Compute the weighted graph loss
+        graph_loss += norm_node_score.mean() * error.mean()
+
+    # Average loss over the batch
+    return graph_loss.mean()  # Normalize the graph loss to prevent large values
 
 def explanation_loss(sequence_explanations, graph_explanations, model_outputs, labels):
     """
@@ -164,16 +178,24 @@ def explanation_loss(sequence_explanations, graph_explanations, model_outputs, l
         if isinstance(graph_explanations, list):
             # Assuming each element in graph_explanations is a list of attributions
             node_attributions = [explanation[0] for explanation in graph_explanations]  # Adjust index if necessary
-            # Process node_attributions for graph_loss calculation here
+            
+            # Convert node_attributions to tensor if necessary
+            node_attributions = [torch.tensor(attrib, device=model_outputs.device) for attrib in node_attributions]
 
         else:
             # Handle case where graph_explanations is not a list (if applicable)
             # Assuming graph_explanations is a dictionary or something else
             node_attributions = graph_explanations['node_attributions']
-            # Process node_attributions for graph_loss calculation here
+            node_attributions = torch.tensor(node_attributions, device=model_outputs.device)  # Convert to tensor
+        graph_loss = graph_explanation_loss(node_attributions, model_outputs, labels)
 
     # Combine losses
+    print(f'sequence_loss: {sequence_loss}')
+    print(f'graph_loss: {graph_loss}')
+
     total_loss = sequence_loss + graph_loss
+    print(f'total_loss: {graph_loss}')
+
     return total_loss
 
 
