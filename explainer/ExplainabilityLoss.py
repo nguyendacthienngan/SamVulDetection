@@ -157,7 +157,7 @@ def graph_explanation_loss(node_importance, model_outputs, labels):
         # Normalize the node score
         norm_node_score = torch.sigmoid(node_score) / (torch.sum(node_score) + 1e-8)
 
-        print(f'Node Score: {node_score}, Error: {error.mean()}, Graph Loss Increment: {norm_node_score.mean() * error.mean()}')
+        # print(f'Node Score: {node_score}, Error: {error.mean()}, Graph Loss Increment: {norm_node_score.mean() * error.mean()}')
 
         # Compute the weighted graph loss
         graph_loss += norm_node_score.mean() * error.mean()

@@ -11,6 +11,7 @@ class ModelParser:
     hidden_size: int = 256  # GNN hidden layer vector dimension
     layer_num: int = 5  # Number of GNN layers
     num_classes: int = 2
+    batch_size: int = 16
 
 model_args = ModelParser()
 
@@ -25,6 +26,7 @@ class DevignModel(nn.Module):
         self.max_edge_types = max_edge_types
         self.num_timesteps = num_steps
         self.num_classes = model_args.num_classes  # Assuming binary classification
+        self.batch_size = model_args.batch_size
 
         # Initialize both versions of GatedGraphConv
         self.ggnn = DGLGatedGraphConv(in_feats=input_dim, out_feats=output_dim, n_steps=num_steps, n_etypes=max_edge_types)
@@ -70,11 +72,11 @@ class DevignModel(nn.Module):
             outputs = self.ggnn_exp(node_features, edge_index)
 
             # Debug: Check the shape of the output
-            print(f"Original outputs shape: {outputs.shape}")
+            # print(f"Original outputs shape: {outputs.shape}")
 
             # Adjust the outputs to match the shape (batch_size, num_classes)
             try:
-                valid_batch_size = 16
+                valid_batch_size = self.batch_size
                 max_batches = outputs.shape[0] // valid_batch_size
                 outputs = outputs[:max_batches * valid_batch_size]  # Trim to fit
 
