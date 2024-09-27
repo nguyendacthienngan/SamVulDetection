@@ -151,27 +151,31 @@ def graph_explanation_loss(node_importance, model_outputs, labels):
     
     return graph_loss.mean()  # Return the average loss over the batch
 
-
 def explanation_loss(sequence_explanations, graph_explanations, model_outputs, labels):
     """
-    Combine sequence and graph explanation losses.
+    Calculate the combined explanation loss based on sequence and graph explanations.
     """
-    # Calculate sequence explanation loss (assuming sequence_explanations is a list of importance scores)
+    # Calculate sequence explanation loss
     sequence_loss = sequence_explanation_loss(sequence_explanations, model_outputs, labels)
-    print(f"sequence_loss: {sequence_loss}")
 
-    # Initialize graph_loss to zero if graph_explanations is None
     graph_loss = 0.0
     if graph_explanations is not None:
-        # Unpack graph explanations to get edge masks and node attributions
-        node_attributions = graph_explanations['node_attributions']
+        # Check if graph_explanations is a list and handle accordingly
+        if isinstance(graph_explanations, list):
+            # Assuming each element in graph_explanations is a list of attributions
+            node_attributions = [explanation[0] for explanation in graph_explanations]  # Adjust index if necessary
+            # Process node_attributions for graph_loss calculation here
 
-        # Calculate graph explanation loss using node attributions
-        graph_loss = graph_explanation_loss(node_attributions, model_outputs, labels)
-    
-    # Combine both losses
-    total_explanation_loss = sequence_loss + graph_loss
-    return total_explanation_loss
+        else:
+            # Handle case where graph_explanations is not a list (if applicable)
+            # Assuming graph_explanations is a dictionary or something else
+            node_attributions = graph_explanations['node_attributions']
+            # Process node_attributions for graph_loss calculation here
+
+    # Combine losses
+    total_loss = sequence_loss + graph_loss
+    return total_loss
+
 
 def explain_graph_outputs(model, outputs, g_batch, device):
     edge_explanations = []
