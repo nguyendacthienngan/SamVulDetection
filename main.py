@@ -57,21 +57,20 @@ def load_and_split_data(json_file_path, apply_combined_sampling=True):
     return train_data_resampled, val_data, test_data, train_labels_resampled, val_labels, test_labels
 
 
+
 def collate_fn(batch):
-    # Tách các phần tử của batch
     sequence_ids = [torch.tensor(item['sequence_ids']) for item in batch]
     attention_masks = [torch.tensor(item['attention_mask']) for item in batch]
-    graph_features = [item['graph_features'] for item in batch if item['graph_features']  is not None]
+    graph_features = [item['graph_features'] for item in batch if item['graph_features'] is not None]
     labels = [item['label'] for item in batch]
-    raw_codes = [item['raw_code'] for item in batch]  # Add raw_code collection
+    raw_codes = [item['raw_code'] for item in batch]
 
-    # Chuyển đổi các dữ liệu sequence thành tensor
     sequence_ids_tensor = torch.stack(sequence_ids)
     attention_masks_tensor = torch.stack(attention_masks)
     labels_tensor = torch.tensor(labels)
-    # graph_features_tensor = torch.stack(graph_features)
+
     if len(graph_features) > 0:
-        graph_features_tensor = dgl.batch(graph_features)  # Use DGL's batch function
+        graph_features_tensor = dgl.batch(graph_features)
     else:
         graph_features_tensor = None
 
@@ -79,9 +78,10 @@ def collate_fn(batch):
         'sequence_ids': sequence_ids_tensor,
         'attention_mask': attention_masks_tensor,
         'graph_features': graph_features_tensor,
-        'raw_code': raw_codes,  # Include raw_code in the returned batch
+        'raw_code': raw_codes,
         'label': labels_tensor
     }
+
 from torch.optim.lr_scheduler import StepLR
 def train(args, device, train_loader, val_loader, model, optimizer, loss_function, freeze_epochs=5):
     train_losses = []

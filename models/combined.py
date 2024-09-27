@@ -20,7 +20,16 @@ class CombinedModel(nn.Module):
         
         # Handle case where graph inputs might be None
         if graph_inputs is not None:
-            graph_outputs = self.devign_model(graph_inputs)
+            node_features = graph_inputs.ndata['type']  # Use 'type' as the feature input
+            edge_types = graph_inputs.edata['label']  # Use 'label' as edge type
+            # Extract the source and destination node indices for edges
+            src, dst = graph_inputs.edges()
+            # Stack to create edge_index in shape (2, num_edges)
+            edge_index = torch.stack([src, dst], dim=0)
+
+            graph_outputs = self.devign_model(node_features, edge_index, edge_types)
+
+            # graph_outputs = self.devign_model(graph_inputs)
             
             # If graph_outputs is a tuple, extract the first element (the actual logits or output tensor)
             if isinstance(graph_outputs, tuple):
