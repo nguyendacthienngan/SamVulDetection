@@ -7,6 +7,102 @@ import os
 from transformers_interpret import SequenceClassificationExplainer
 from transformers import RobertaTokenizer
 from torch.optim.lr_scheduler import StepLR
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def visualize_sequence_explanations(sequence_explanations, sequence_texts):
+    for i, (explanations, text) in enumerate(zip(sequence_explanations, sequence_texts)):
+        # Extract tokens and their importance scores
+        tokens = [score[0] for score in explanations]
+        scores = np.array([score[1] for score in explanations])
+
+        # Plot token importance using a bar plot
+        plt.figure(figsize=(10, 5))
+        plt.bar(tokens, scores, color='skyblue')
+        plt.xticks(rotation=90)
+        plt.xlabel("Tokens")
+        plt.ylabel("Importance Score")
+        plt.title(f"Token Importance for Sequence {i}")
+        plt.tight_layout()
+
+        # Save or show the plot
+        plt.savefig(f"sequence_explanations_{i}.png")
+        plt.show()
+
+import networkx as nx
+import matplotlib.pyplot as plt
+import networkx as nx
+import matplotlib.pyplot as plt
+import dgl
+import networkx as nx
+import matplotlib.pyplot as plt
+import dgl
+def visualize_graph_explanations(g_batch, node_attributions, batch_idx):
+    # Check if 'node_attributions' is in the dictionary
+    if 'node_attributions' in node_attributions:
+        attributions_list = node_attributions['node_attributions']
+        
+        for i, g in enumerate(dgl.unbatch(g_batch)):
+            # Check if the index i is valid for attributions_list
+            if i < len(attributions_list):
+                # Access the node scores for the current graph
+                node_scores = attributions_list[i]
+
+                # Create a NetworkX graph from the DGL graph
+                G = nx.Graph()
+                for node in g.nodes():
+                    G.add_node(node.item())  # Ensure node is added as an integer
+                for edge in g.edges():
+                    G.add_edge(edge[0].item(), edge[1].item())
+
+                # Print node scores and node IDs for debugging
+                node_scores = node_scores.tolist() if isinstance(node_scores, torch.Tensor) else node_scores
+                # print(f"Node scores for graph {i}: {node_scores}")
+
+                # Debug: Print the corresponding node IDs in the graph
+                node_ids = [node.item() for node in g.nodes()]
+                # print(f"Node IDs for graph {i}: {node_ids}")
+
+                # Ensure the node scores are aligned with the node IDs
+                node_scores_dict = dict(zip(node_ids, node_scores))
+
+                # Extract scores in the order of the nodes in the graph
+                aligned_scores = [node_scores_dict.get(node_id, 0) for node_id in node_ids]
+
+                # Normalize node scores
+                min_score = min(aligned_scores)
+                max_score = max(aligned_scores)
+                normalized_scores = [(score - min_score) / (max_score - min_score + 1e-6) for score in aligned_scores]
+
+                # Set node size and color based on normalized importance scores
+                node_sizes = [score * 1000 for score in normalized_scores]
+                node_colors = normalized_scores
+
+                # Debugging output for lengths
+                # print(f"Number of nodes in graph: {len(G.nodes())}")
+                # print(f"Node sizes length: {len(node_sizes)}")
+                # print(f"Node colors length: {len(node_colors)}")
+
+                # Ensure that sizes and colors match the number of nodes
+                if len(node_sizes) != len(G.nodes()) or len(node_colors) != len(G.nodes()):
+                    # print(f"Mismatch in lengths for graph {i}:")
+                    # print(f"Node sizes: {len(node_sizes)}, Node colors: {len(node_colors)}, Nodes in graph: {len(G.nodes())}")
+                    continue  # Skip drawing if there's a mismatch
+
+                # Draw the graph
+                plt.figure(figsize=(8, 8))
+                pos = nx.spring_layout(G)  # Layout for visual clarity
+                nx.draw(G, pos, with_labels=True, node_size=node_sizes, node_color=node_colors, cmap=plt.cm.Reds)
+                # plt.title(f"Graph Node Importance for Batch {batch_idx}, Graph {i}")
+                # plt.savefig(f"graph_explanation_batch_{batch_idx}_graph_{i}.png")
+                plt.show()
+            else:
+                print(f"No explanations for graph index {i}.")
+                continue  # Skip if there are no explanations for this graph
+    else:
+        print("No node attributions found in the provided dictionary.")
+
 """
 explanations/
     epoch_1/
@@ -376,6 +472,11 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
                 print(f"Epoch [{epoch + 1}/{args['epoch']}], Step [{batch_idx + 1}/{len(train_loader)}], Loss: {total_loss_combined.item():.4f}")
             if test_mode is True:
                 break
+
+            # Visualize explanations
+            # visualize_sequence_explanations(sequence_explanations, tokenizer.batch_decode(sequence_inputs, skip_special_tokens=True))
+            # if graph_inputs is not None:
+            #     visualize_graph_explanations(graph_inputs, graph_explanations, batch_idx)
         avg_loss = total_loss / len(train_loader)
 
         # for name, param in model.named_parameters():
