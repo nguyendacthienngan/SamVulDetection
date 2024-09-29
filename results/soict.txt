@@ -1,0 +1,18 @@
+1. CombinedModel after have Explainers (3 epoches)
+Epoch 1/10, Average Loss: 0.6946
+Epoch 1/10, Validation Loss: 0.6737
+Validation Accuracy: 0.9380, Precision: 0.1574, Recall: 0.0702, F1-Score: 0.0971
+
+Epoch 2/10, Average Loss: 0.6999
+Epoch 2/10, Validation Loss: 0.6731
+Validation Accuracy: 0.9460, Precision: 0.1887, Recall: 0.0413, F1-Score: 0.0678
+
+Epoch 3/10, Average Loss: 0.7034
+Epoch 3/10, Validation Loss: 0.6730
+Validation Accuracy: 0.9464, Precision: 0.1961, Recall: 0.0413, F1-Score: 0.0683
+
+2. CombinedModel (11 epoches)
+Validation Accuracy: 0.7604, Precision: 0.1386, Recall: 0.6981, F1-Score: 0.2313
+
+3. DeepTective (2 epoches)
+Validation Accuracy: 0.9475, Precision: 0.1379, Recall: 0.0030, F1-Score: 0.0060

@@ -10,7 +10,8 @@ from torch.optim.lr_scheduler import StepLR
 
 import matplotlib.pyplot as plt
 import numpy as np
-
+import networkx as nx
+import dgl
 def visualize_sequence_explanations(sequence_explanations, sequence_texts):
     for i, (explanations, text) in enumerate(zip(sequence_explanations, sequence_texts)):
         # Extract tokens and their importance scores
@@ -30,14 +31,256 @@ def visualize_sequence_explanations(sequence_explanations, sequence_texts):
         plt.savefig(f"sequence_explanations_{i}.png")
         plt.show()
 
-import networkx as nx
-import matplotlib.pyplot as plt
-import networkx as nx
-import matplotlib.pyplot as plt
-import dgl
-import networkx as nx
-import matplotlib.pyplot as plt
-import dgl
+
+
+def visualize_ast(g_batch, batch_idx, save_dir='/home/ngan/Documents/SamVulDetection/saved_pdf/'):
+    """
+    Visualize the AST graph by filtering out non-AST edges.
+
+    Args:
+    - g_batch: DGL batch of graphs with edge types (AST, CFG, etc.).
+    - batch_idx: Index of the current batch.
+    - save_dir: Directory to save the graph image (optional).
+    """
+    # Unbatch the graph if g_batch contains multiple graphs
+    graphs = dgl.unbatch(g_batch)
+    g = graphs[batch_idx]  # Select the specific graph for this batch
+    
+    # Create a NetworkX graph from DGL graph
+    AST_graph = nx.DiGraph()  # DiGraph for directed AST
+    
+    # Retrieve edge labels
+    edge_labels = g.edata['label'].tolist()
+    
+    # Only include AST edges in the visualization
+    for i, (u, v) in enumerate(zip(g.edges()[0], g.edges()[1])):
+        if edge_labels[i] == 0:  # Assuming 0 corresponds to AST edge in your mapping
+            AST_graph.add_edge(u.item(), v.item())
+
+    # Add node attributes (e.g., 'type' or any other feature you want to visualize)
+    node_types = g.ndata['type'].tolist()
+    for node in AST_graph.nodes():
+        AST_graph.nodes[node]['type'] = node_types[node]
+    
+    # Visualization
+    plt.figure(figsize=(10, 8))
+    pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
+    
+    # Draw nodes with labels (node type)
+    nx.draw(AST_graph, pos, with_labels=True, node_color='lightblue', node_size=500, font_size=8)
+    
+    # Draw edge labels if needed
+    nx.draw_networkx_edge_labels(AST_graph, pos)
+    
+    plt.title(f"AST Graph Visualization - Batch {batch_idx}")
+    
+    # Save the graph or show it
+    if save_dir:
+        plt.savefig(f"{save_dir}/AST_graph_batch_{batch_idx}.png")
+    else:
+        plt.show()
+
+def visualize_ast(g_batch, batch_idx, node_importance_scores, save_dir='/home/ngan/Documents/SamVulDetection/saved_pdf/'):
+    """
+    Visualize the AST graph by filtering out non-AST edges and highlighting important nodes.
+
+    Args:
+    - g_batch: DGL batch of graphs with edge types (AST, CFG, etc.).
+    - batch_idx: Index of the current batch.
+    - node_importance_scores: Dictionary of node importance scores for the current graph.
+    - save_dir: Directory to save the graph image (optional).
+    """
+    # Check if 'node_attributions' is in the dictionary
+    if 'node_attributions' in node_importance_scores:
+        attributions_list = node_importance_scores['node_attributions']
+        
+        # Unbatch the graph if g_batch contains multiple graphs
+        graphs = dgl.unbatch(g_batch)
+        g = graphs[batch_idx]  # Select the specific graph for this batch
+
+        # Check if the index batch_idx is valid for attributions_list
+        if batch_idx < len(attributions_list):
+            node_scores = attributions_list[batch_idx]
+
+            # Ensure the node_scores are in a proper format (list or tensor)
+            node_scores = node_scores.tolist() if isinstance(node_scores, torch.Tensor) else node_scores
+
+            # Create a NetworkX graph from DGL graph
+            AST_graph = nx.DiGraph()  # DiGraph for directed AST
+            
+            # Retrieve edge labels
+            edge_labels = g.edata['label'].tolist()
+            
+            # Only include AST edges in the visualization
+            for i, (u, v) in enumerate(zip(g.edges()[0], g.edges()[1])):
+                if edge_labels[i] == 0:  # Assuming 0 corresponds to AST edge in your mapping
+                    AST_graph.add_edge(u.item(), v.item())
+
+            # Add node attributes (e.g., 'type' or any other feature you want to visualize)
+            node_types = g.ndata['type'].tolist()
+            for node in AST_graph.nodes():
+                AST_graph.nodes[node]['type'] = node_types[node]
+
+            # Ensure the node scores are aligned with the node IDs
+            node_ids = [node.item() for node in g.nodes()]
+            node_scores_dict = dict(zip(node_ids, node_scores))
+
+            # Extract scores in the order of the nodes in the graph
+            aligned_scores = [node_scores_dict.get(node_id, 0) for node_id in node_ids]
+
+            # Normalize node scores
+            min_score = min(aligned_scores)
+            max_score = max(aligned_scores)
+            normalized_scores = [(score - min_score) / (max_score - min_score + 1e-6) for score in aligned_scores]
+            
+            # Ensure the lengths match
+            if len(normalized_scores) != len(AST_graph.nodes()):
+                print("Warning: The length of normalized_scores does not match the number of nodes in the graph.")
+                # Adjust the size of normalized_scores or node_sizes to match the number of nodes
+                normalized_scores = normalized_scores[:len(AST_graph.nodes())]  # Trim to match if necessary
+
+            
+            # Set node size and color based on normalized importance scores
+            node_sizes = [score * 1000 for score in normalized_scores]  # Scale sizes for visibility
+            node_colors = normalized_scores  # Directly use scores for color
+            
+            # Visualization
+            plt.figure(figsize=(10, 8))
+            pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
+
+            # Draw nodes with labels (node type)
+            nx.draw(AST_graph, pos, with_labels=True, node_color=node_colors, node_size=node_sizes, cmap=plt.cm.Reds, alpha=0.8)
+            
+            # Draw edge labels if needed
+            nx.draw_networkx_edge_labels(AST_graph, pos)
+            
+            plt.title(f"AST Graph Visualization - Batch {batch_idx}")
+            
+            # Save the graph or show it
+            if save_dir:
+                plt.savefig(f"{save_dir}/AST_graph_batch_{batch_idx}.png")
+            else:
+                plt.show()
+        else:
+            print(f"No explanations for graph index {batch_idx}.")
+    else:
+        print("No node attributions found in the provided dictionary.")
+    """
+    Visualize the AST graph by filtering out non-AST edges and highlighting important nodes.
+
+    Args:
+    - g_batch: DGL batch of graphs with edge types (AST, CFG, etc.).
+    - batch_idx: Index of the current batch.
+    - node_importance_scores: List of node importance scores for the current graph.
+    - save_dir: Directory to save the graph image (optional).
+    """
+    node_importance_scores = node_importance_scores['node_attributions']
+    processed_scores = []
+    # Unbatch the graph if g_batch contains multiple graphs
+    graphs = dgl.unbatch(g_batch)
+    g = graphs[batch_idx]  # Select the specific graph for this batch
+    
+    # Create a NetworkX graph from DGL graph
+    AST_graph = nx.DiGraph()  # DiGraph for directed AST
+    
+    # Retrieve edge labels
+    edge_labels = g.edata['label'].tolist()
+    
+    # Only include AST edges in the visualization
+    for i, (u, v) in enumerate(zip(g.edges()[0], g.edges()[1])):
+        if edge_labels[i] == 0:  # Assuming 0 corresponds to AST edge in your mapping
+            AST_graph.add_edge(u.item(), v.item())
+
+    # Add node attributes (e.g., 'type' or any other feature you want to visualize)
+    node_types = g.ndata['type'].tolist()
+    for node in AST_graph.nodes():
+        AST_graph.nodes[node]['type'] = node_types[node]
+    
+    # Visualization
+    plt.figure(figsize=(10, 8))
+    pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
+
+    # Check the type of node importance scores
+    print("Node Importance Scores:", node_importance_scores)
+    print("Types of scores:", [type(score) for score in node_importance_scores])
+
+    # Convert scores to floats if they are tensors or strings
+    # node_importance_scores = [score.item() if isinstance(score, torch.Tensor) else float(score) for score in node_importance_scores]
+    # Check type and handle it
+    num_nodes = g_batch.number_of_nodes()
+    processed_scores = [0.0] * num_nodes  # Initialize with zero scores
+
+    if isinstance(node_importance_scores, torch.Tensor):
+        # Ensure the tensor is float type
+        node_importance_scores = node_importance_scores.float()
+        # processed_scores = node_importance_scores.flatten().tolist()
+        for i in range(num_nodes):
+            processed_scores[i] = node_importance_scores[i].item() if i < len(node_importance_scores) else 0.0
+    
+    elif isinstance(node_importance_scores, list):
+        # for score in node_importance_scores:
+        #     if isinstance(score, torch.Tensor):
+        #         # Convert to float if it's a tensor
+        #         score = score.float()
+        #         if score.numel() == 1:
+        #             processed_scores.append(float(score.item()))
+        #         else:
+        #             # Average the multi-element tensor
+        #             avg_score = score.mean().item()  # Get the average
+        #             processed_scores.append(float(avg_score))
+        #             print("Averaged multi-element tensor to:", avg_score)
+        #     else:
+        #         processed_scores.append(float(score))
+        for i, score in enumerate(node_importance_scores):
+            if isinstance(score, torch.Tensor):
+                score = score.float()  # Convert to float tensor
+                processed_scores[i] = score.mean().item() if i < len(processed_scores) else 0.0
+            else:
+                processed_scores[i] = float(score)
+
+    else:
+        raise ValueError("node_importance_scores must be a Tensor or a list of Tensors or numbers.")
+    # Check if processed_scores is empty
+    if not processed_scores:
+        raise ValueError("node_importance_scores is empty after processing. Please check the input.")
+
+    # Ensure the length matches the number of nodes in the graph
+    if len(processed_scores) != num_nodes:
+        print(f"Warning: Length of processed_scores ({len(processed_scores)}) does not match number of nodes ({num_nodes}).")
+        # Optionally, fill the remaining scores with a default value (like 0.0)
+        processed_scores.extend([0.0] * (num_nodes - len(processed_scores)))
+
+    min_score = min(processed_scores)
+    max_score = max(processed_scores)
+
+    normalized_scores = [(score - min_score) / (max_score - min_score + 1e-6) for score in processed_scores]
+
+    # Check if normalized_scores length matches the number of nodes
+    if len(normalized_scores) != num_nodes:
+        raise ValueError(f"Length of normalized_scores ({len(normalized_scores)}) does not match number of nodes ({num_nodes}).")
+
+     # Visualization
+    plt.figure(figsize=(10, 8))
+    pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
+    
+    # Set node size and color based on normalized importance scores
+    node_sizes = [score * 1000 for score in normalized_scores]  # Scale sizes for visibility
+    node_colors = normalized_scores  # Directly use scores for color
+    
+    # Draw nodes with labels (node type)
+    nx.draw(AST_graph, pos, with_labels=True, node_color=node_colors, node_size=node_sizes, cmap=plt.cm.Reds, alpha=0.8)
+    
+    # Draw edge labels if needed
+    nx.draw_networkx_edge_labels(AST_graph, pos)
+    
+    plt.title(f"AST Graph Visualization - Batch {batch_idx}")
+    
+    # Save the graph or show it
+    if save_dir:
+        plt.savefig(f"{save_dir}/AST_graph_batch_{batch_idx}.png")
+    else:
+        plt.show()
+
 def visualize_graph_explanations(g_batch, node_attributions, batch_idx):
     # Check if 'node_attributions' is in the dictionary
     if 'node_attributions' in node_attributions:
@@ -412,6 +655,13 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
 
             optimizer.zero_grad()
 
+            # visualize_graph_explanations(graph_inputs, test_explanations, batch_idx)
+            # visualize_ast(graph_inputs, batch_idx)
+
+            # visualize_ast(graph_inputs, batch_idx, test_explanations)
+
+            # return
+            
             # Calculate loss
             classification_loss  = loss_function(outputs, labels)
 
