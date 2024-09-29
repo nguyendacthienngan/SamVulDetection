@@ -33,6 +33,12 @@ def load_and_split_data(json_file_path, apply_combined_sampling=True):
     # Split data into train, validation, and test sets
     train_data, temp_data, train_labels, temp_labels = train_test_split(data_items, labels, test_size=0.3, random_state=42)
     val_data, test_data, val_labels, test_labels = train_test_split(temp_data, temp_labels, test_size=0.5, random_state=42)
+    
+    # Print dataset statistics
+    print(f"Total number of samples: {len(data_items)}")
+    print(f"Training set size: {len(train_data)}")
+    print(f"Validation set size: {len(val_data)}")
+    print(f"Test set size: {len(test_data)}")
 
     # Check label distribution before resampling
     print(f"Training label distribution before resampling: {np.bincount(train_labels)}")
