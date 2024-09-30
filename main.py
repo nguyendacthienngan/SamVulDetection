@@ -21,8 +21,20 @@ from imblearn.combine import SMOTEENN  # Combines SMOTE (oversampling) and Edite
 import numpy as np
 import dgl
 
-def load_and_split_data(json_file_path, apply_combined_sampling=True):
-    # Load JSON data
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
+
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
+
+def load_and_split_data(json_file_path, is_visualize=False):
+    # Load data from JSON file
     with open(json_file_path, 'r') as f:
         data = json.load(f)
 
@@ -30,37 +42,50 @@ def load_and_split_data(json_file_path, apply_combined_sampling=True):
     data_items = [item for item in data]
     labels = [item['is_vul'] for item in data]
 
-    # Split data into train, validation, and test sets
-    train_data, temp_data, train_labels, temp_labels = train_test_split(data_items, labels, test_size=0.3, random_state=42)
-    val_data, test_data, val_labels, test_labels = train_test_split(temp_data, temp_labels, test_size=0.5, random_state=42)
+    # Count vulnerabilities before resampling
+    count_vul_before = [labels.count(0), labels.count(1)]
     
-    # Print dataset statistics
-    print(f"Total number of samples: {len(data_items)}")
+    # Visualization before resampling
+    if is_visualize:
+        visualize_vulnerability_count(count_vul_before, "Before Resampling")
+
+    # Resampling (Undersampling majority class and Oversampling minority class)
+    undersampler = RandomUnderSampler(sampling_strategy=0.8, random_state=42)
+    undersampler_data_items, undersampler_labels = undersampler.fit_resample(np.array(data_items).reshape(-1, 1), labels)
+
+    oversampler = RandomOverSampler(sampling_strategy=1.0, random_state=42)  # Match minority class to majority
+    oversampler_data_items, oversampler_labels = oversampler.fit_resample(np.array(undersampler_data_items).reshape(-1, 1), undersampler_labels)
+    data_resampled = [item[0] for item in oversampler_data_items]
+
+    # Count vulnerabilities after resampling
+    count_vul_after = [oversampler_labels.count(0), oversampler_labels.count(1)]
+    
+    # Visualization after resampling
+    if is_visualize:
+        visualize_vulnerability_count(count_vul_after, "After Resampling")
+
+    # Split data into train, validation, and test sets after resampling
+    train_data, temp_data, train_labels, temp_labels = train_test_split(data_resampled, oversampler_labels, test_size=0.3, random_state=42)
+    val_data, test_data, val_labels, test_labels = train_test_split(temp_data, temp_labels, test_size=0.5, random_state=42)
+
     print(f"Training set size: {len(train_data)}")
     print(f"Validation set size: {len(val_data)}")
     print(f"Test set size: {len(test_data)}")
+    return train_data, val_data, test_data, train_labels, val_labels, test_labels
 
-    # Check label distribution before resampling
-    print(f"Training label distribution before resampling: {np.bincount(train_labels)}")
+def visualize_vulnerability_count(count_vul, title="Vulnerability Count"):
+    plt.figure(figsize=(8, 5))
+    plt.bar(['Benign', 'Vulnerability'], count_vul, color=['blue', 'orange'])
+    
+    # Adding the count above each bar
+    for i, count in enumerate(count_vul):
+        plt.text(i, count + 5, str(count), ha='center', va='bottom')  # Reduced the height offset
 
-    if apply_combined_sampling:
-        # First apply undersampling to the majority class
-        undersampler = RandomUnderSampler(sampling_strategy=0.8, random_state=42)  # Retain 80% of the majority class
-        train_data, train_labels = undersampler.fit_resample(np.array(train_data).reshape(-1, 1), train_labels)
-        train_data = [item[0] for item in train_data]  # Flatten data back
-
-        # Then apply oversampling to the minority class
-        oversampler = RandomOverSampler(sampling_strategy=1.0, random_state=42)  # Match minority class to majority
-        train_data_resampled, train_labels_resampled = oversampler.fit_resample(np.array(train_data).reshape(-1, 1), train_labels)
-        train_data_resampled = [item[0] for item in train_data_resampled]
-
-        # Check label distribution after resampling
-        print(f"Training label distribution after combined resampling: {np.bincount(train_labels_resampled)}")
-    else:
-        train_data_resampled = train_data
-        train_labels_resampled = train_labels
-
-    return train_data_resampled, val_data, test_data, train_labels_resampled, val_labels, test_labels
+    plt.title(title)
+    plt.xlabel('Label')
+    plt.ylabel('Count')
+    plt.grid(axis='y')
+    plt.show()
 
 
 
