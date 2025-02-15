@@ -107,6 +107,8 @@ def create_graph_from_json(data_item):
         for node in nodes:
             features = {
                 # 'type': node.get('typeFullName', 'unknown'),
+                'id': node.get('id', 'unknown'),  # Adapt _label to type feature
+                'argumentIndex': node.get('argumentIndex', 'unknown'),  # Adapt _label to type feature
                 'type': node.get('_label', 'unknown'),  # Adapt _label to type feature
                 'code': node.get('code', ''),
                 'name': node.get('name', ''),
@@ -119,6 +121,8 @@ def create_graph_from_json(data_item):
         if len(node_features) < g.num_nodes():
             missing_count = g.num_nodes() - len(node_features)
             placeholder_features = {
+                'id': '',
+                'argumentIndex': '',
                 'type': 'unknown',
                 'code': '',
                 'name': '',
@@ -159,10 +163,10 @@ def create_graph_from_json(data_item):
         # Ensure edge types are within the valid range
         g.edata['label'] = torch.tensor(edge_types, dtype=torch.long)
 
-        return g
+        return g, node_features
     else:
         # Handle the case where func_graph_path is None
-        return None
+        return None, None
 
 def convert_examples_to_features(js, tokenizer, args, idx, label):
     # Function to process sequence data and return tokens, ids
@@ -211,11 +215,12 @@ class MegaVulDataset(Dataset):
         # Sequence input processing
         sequence_features = convert_examples_to_features(item, self.tokenizer, self.args, idx, label)
         # Graph input processing
-        graph_features = create_graph_from_json(item)
+        graph_features, node_features = create_graph_from_json(item)
         return {
             'sequence_ids': sequence_features.sequence_ids,
             'attention_mask': sequence_features.attention_mask,
             'raw_code': sequence_features.raw_code,  # Include raw code in the batch
             'graph_features': graph_features,
+            'node_features': node_features,
             'label': label
         }

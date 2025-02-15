@@ -30,321 +30,7 @@ def visualize_sequence_explanations(sequence_explanations, sequence_texts):
         # Save or show the plot
         plt.savefig(f"sequence_explanations_{i}.png")
         plt.show()
-
-
-
-def visualize_ast(g_batch, batch_idx, save_dir='/home/ngan/Documents/SamVulDetection/saved_pdf/'):
-    """
-    Visualize the AST graph by filtering out non-AST edges.
-
-    Args:
-    - g_batch: DGL batch of graphs with edge types (AST, CFG, etc.).
-    - batch_idx: Index of the current batch.
-    - save_dir: Directory to save the graph image (optional).
-    """
-    # Unbatch the graph if g_batch contains multiple graphs
-    graphs = dgl.unbatch(g_batch)
-    g = graphs[batch_idx]  # Select the specific graph for this batch
-    
-    # Create a NetworkX graph from DGL graph
-    AST_graph = nx.DiGraph()  # DiGraph for directed AST
-    
-    # Retrieve edge labels
-    edge_labels = g.edata['label'].tolist()
-    
-    # Only include AST edges in the visualization
-    for i, (u, v) in enumerate(zip(g.edges()[0], g.edges()[1])):
-        if edge_labels[i] == 0:  # Assuming 0 corresponds to AST edge in your mapping
-            AST_graph.add_edge(u.item(), v.item())
-
-    # Add node attributes (e.g., 'type' or any other feature you want to visualize)
-    node_types = g.ndata['type'].tolist()
-    for node in AST_graph.nodes():
-        AST_graph.nodes[node]['type'] = node_types[node]
-    
-    # Visualization
-    plt.figure(figsize=(10, 8))
-    pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
-    
-    # Draw nodes with labels (node type)
-    nx.draw(AST_graph, pos, with_labels=True, node_color='lightblue', node_size=500, font_size=8)
-    
-    # Draw edge labels if needed
-    nx.draw_networkx_edge_labels(AST_graph, pos)
-    
-    plt.title(f"AST Graph Visualization - Batch {batch_idx}")
-    
-    # Save the graph or show it
-    if save_dir:
-        plt.savefig(f"{save_dir}/AST_graph_batch_{batch_idx}.png")
-    else:
-        plt.show()
-
-def visualize_ast(g_batch, batch_idx, node_importance_scores, save_dir='/home/ngan/Documents/SamVulDetection/saved_pdf/'):
-    """
-    Visualize the AST graph by filtering out non-AST edges and highlighting important nodes.
-
-    Args:
-    - g_batch: DGL batch of graphs with edge types (AST, CFG, etc.).
-    - batch_idx: Index of the current batch.
-    - node_importance_scores: Dictionary of node importance scores for the current graph.
-    - save_dir: Directory to save the graph image (optional).
-    """
-    # Check if 'node_attributions' is in the dictionary
-    if 'node_attributions' in node_importance_scores:
-        attributions_list = node_importance_scores['node_attributions']
         
-        # Unbatch the graph if g_batch contains multiple graphs
-        graphs = dgl.unbatch(g_batch)
-        g = graphs[batch_idx]  # Select the specific graph for this batch
-
-        # Check if the index batch_idx is valid for attributions_list
-        if batch_idx < len(attributions_list):
-            node_scores = attributions_list[batch_idx]
-
-            # Ensure the node_scores are in a proper format (list or tensor)
-            node_scores = node_scores.tolist() if isinstance(node_scores, torch.Tensor) else node_scores
-
-            # Create a NetworkX graph from DGL graph
-            AST_graph = nx.DiGraph()  # DiGraph for directed AST
-            
-            # Retrieve edge labels
-            edge_labels = g.edata['label'].tolist()
-            
-            # Only include AST edges in the visualization
-            for i, (u, v) in enumerate(zip(g.edges()[0], g.edges()[1])):
-                if edge_labels[i] == 0:  # Assuming 0 corresponds to AST edge in your mapping
-                    AST_graph.add_edge(u.item(), v.item())
-
-            # Add node attributes (e.g., 'type' or any other feature you want to visualize)
-            node_types = g.ndata['type'].tolist()
-            for node in AST_graph.nodes():
-                AST_graph.nodes[node]['type'] = node_types[node]
-
-            # Ensure the node scores are aligned with the node IDs
-            node_ids = [node.item() for node in g.nodes()]
-            node_scores_dict = dict(zip(node_ids, node_scores))
-
-            # Extract scores in the order of the nodes in the graph
-            aligned_scores = [node_scores_dict.get(node_id, 0) for node_id in node_ids]
-
-            # Normalize node scores
-            min_score = min(aligned_scores)
-            max_score = max(aligned_scores)
-            normalized_scores = [(score - min_score) / (max_score - min_score + 1e-6) for score in aligned_scores]
-            
-            # Ensure the lengths match
-            if len(normalized_scores) != len(AST_graph.nodes()):
-                print("Warning: The length of normalized_scores does not match the number of nodes in the graph.")
-                # Adjust the size of normalized_scores or node_sizes to match the number of nodes
-                normalized_scores = normalized_scores[:len(AST_graph.nodes())]  # Trim to match if necessary
-
-            
-            # Set node size and color based on normalized importance scores
-            node_sizes = [score * 1000 for score in normalized_scores]  # Scale sizes for visibility
-            node_colors = normalized_scores  # Directly use scores for color
-            
-            # Visualization
-            plt.figure(figsize=(10, 8))
-            pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
-
-            # Draw nodes with labels (node type)
-            nx.draw(AST_graph, pos, with_labels=True, node_color=node_colors, node_size=node_sizes, cmap=plt.cm.Reds, alpha=0.8)
-            
-            # Draw edge labels if needed
-            nx.draw_networkx_edge_labels(AST_graph, pos)
-            
-            plt.title(f"AST Graph Visualization - Batch {batch_idx}")
-            
-            # Save the graph or show it
-            if save_dir:
-                plt.savefig(f"{save_dir}/AST_graph_batch_{batch_idx}.png")
-            else:
-                plt.show()
-        else:
-            print(f"No explanations for graph index {batch_idx}.")
-    else:
-        print("No node attributions found in the provided dictionary.")
-    """
-    Visualize the AST graph by filtering out non-AST edges and highlighting important nodes.
-
-    Args:
-    - g_batch: DGL batch of graphs with edge types (AST, CFG, etc.).
-    - batch_idx: Index of the current batch.
-    - node_importance_scores: List of node importance scores for the current graph.
-    - save_dir: Directory to save the graph image (optional).
-    """
-    node_importance_scores = node_importance_scores['node_attributions']
-    processed_scores = []
-    # Unbatch the graph if g_batch contains multiple graphs
-    graphs = dgl.unbatch(g_batch)
-    g = graphs[batch_idx]  # Select the specific graph for this batch
-    
-    # Create a NetworkX graph from DGL graph
-    AST_graph = nx.DiGraph()  # DiGraph for directed AST
-    
-    # Retrieve edge labels
-    edge_labels = g.edata['label'].tolist()
-    
-    # Only include AST edges in the visualization
-    for i, (u, v) in enumerate(zip(g.edges()[0], g.edges()[1])):
-        if edge_labels[i] == 0:  # Assuming 0 corresponds to AST edge in your mapping
-            AST_graph.add_edge(u.item(), v.item())
-
-    # Add node attributes (e.g., 'type' or any other feature you want to visualize)
-    node_types = g.ndata['type'].tolist()
-    for node in AST_graph.nodes():
-        AST_graph.nodes[node]['type'] = node_types[node]
-    
-    # Visualization
-    plt.figure(figsize=(10, 8))
-    pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
-
-    # Check the type of node importance scores
-    print("Node Importance Scores:", node_importance_scores)
-    print("Types of scores:", [type(score) for score in node_importance_scores])
-
-    # Convert scores to floats if they are tensors or strings
-    # node_importance_scores = [score.item() if isinstance(score, torch.Tensor) else float(score) for score in node_importance_scores]
-    # Check type and handle it
-    num_nodes = g_batch.number_of_nodes()
-    processed_scores = [0.0] * num_nodes  # Initialize with zero scores
-
-    if isinstance(node_importance_scores, torch.Tensor):
-        # Ensure the tensor is float type
-        node_importance_scores = node_importance_scores.float()
-        # processed_scores = node_importance_scores.flatten().tolist()
-        for i in range(num_nodes):
-            processed_scores[i] = node_importance_scores[i].item() if i < len(node_importance_scores) else 0.0
-    
-    elif isinstance(node_importance_scores, list):
-        # for score in node_importance_scores:
-        #     if isinstance(score, torch.Tensor):
-        #         # Convert to float if it's a tensor
-        #         score = score.float()
-        #         if score.numel() == 1:
-        #             processed_scores.append(float(score.item()))
-        #         else:
-        #             # Average the multi-element tensor
-        #             avg_score = score.mean().item()  # Get the average
-        #             processed_scores.append(float(avg_score))
-        #             print("Averaged multi-element tensor to:", avg_score)
-        #     else:
-        #         processed_scores.append(float(score))
-        for i, score in enumerate(node_importance_scores):
-            if isinstance(score, torch.Tensor):
-                score = score.float()  # Convert to float tensor
-                processed_scores[i] = score.mean().item() if i < len(processed_scores) else 0.0
-            else:
-                processed_scores[i] = float(score)
-
-    else:
-        raise ValueError("node_importance_scores must be a Tensor or a list of Tensors or numbers.")
-    # Check if processed_scores is empty
-    if not processed_scores:
-        raise ValueError("node_importance_scores is empty after processing. Please check the input.")
-
-    # Ensure the length matches the number of nodes in the graph
-    if len(processed_scores) != num_nodes:
-        print(f"Warning: Length of processed_scores ({len(processed_scores)}) does not match number of nodes ({num_nodes}).")
-        # Optionally, fill the remaining scores with a default value (like 0.0)
-        processed_scores.extend([0.0] * (num_nodes - len(processed_scores)))
-
-    min_score = min(processed_scores)
-    max_score = max(processed_scores)
-
-    normalized_scores = [(score - min_score) / (max_score - min_score + 1e-6) for score in processed_scores]
-
-    # Check if normalized_scores length matches the number of nodes
-    if len(normalized_scores) != num_nodes:
-        raise ValueError(f"Length of normalized_scores ({len(normalized_scores)}) does not match number of nodes ({num_nodes}).")
-
-     # Visualization
-    plt.figure(figsize=(10, 8))
-    pos = nx.spring_layout(AST_graph, seed=42)  # Layout for graph visualization
-    
-    # Set node size and color based on normalized importance scores
-    node_sizes = [score * 1000 for score in normalized_scores]  # Scale sizes for visibility
-    node_colors = normalized_scores  # Directly use scores for color
-    
-    # Draw nodes with labels (node type)
-    nx.draw(AST_graph, pos, with_labels=True, node_color=node_colors, node_size=node_sizes, cmap=plt.cm.Reds, alpha=0.8)
-    
-    # Draw edge labels if needed
-    nx.draw_networkx_edge_labels(AST_graph, pos)
-    
-    plt.title(f"AST Graph Visualization - Batch {batch_idx}")
-    
-    # Save the graph or show it
-    if save_dir:
-        plt.savefig(f"{save_dir}/AST_graph_batch_{batch_idx}.png")
-    else:
-        plt.show()
-
-def visualize_graph_explanations(g_batch, node_attributions, batch_idx):
-    # Check if 'node_attributions' is in the dictionary
-    if 'node_attributions' in node_attributions:
-        attributions_list = node_attributions['node_attributions']
-        
-        for i, g in enumerate(dgl.unbatch(g_batch)):
-            # Check if the index i is valid for attributions_list
-            if i < len(attributions_list):
-                # Access the node scores for the current graph
-                node_scores = attributions_list[i]
-
-                # Create a NetworkX graph from the DGL graph
-                G = nx.Graph()
-                for node in g.nodes():
-                    G.add_node(node.item())  # Ensure node is added as an integer
-                for edge in g.edges():
-                    G.add_edge(edge[0].item(), edge[1].item())
-
-                # Print node scores and node IDs for debugging
-                node_scores = node_scores.tolist() if isinstance(node_scores, torch.Tensor) else node_scores
-                # print(f"Node scores for graph {i}: {node_scores}")
-
-                # Debug: Print the corresponding node IDs in the graph
-                node_ids = [node.item() for node in g.nodes()]
-                # print(f"Node IDs for graph {i}: {node_ids}")
-
-                # Ensure the node scores are aligned with the node IDs
-                node_scores_dict = dict(zip(node_ids, node_scores))
-
-                # Extract scores in the order of the nodes in the graph
-                aligned_scores = [node_scores_dict.get(node_id, 0) for node_id in node_ids]
-
-                # Normalize node scores
-                min_score = min(aligned_scores)
-                max_score = max(aligned_scores)
-                normalized_scores = [(score - min_score) / (max_score - min_score + 1e-6) for score in aligned_scores]
-
-                # Set node size and color based on normalized importance scores
-                node_sizes = [score * 1000 for score in normalized_scores]
-                node_colors = normalized_scores
-
-                # Debugging output for lengths
-                # print(f"Number of nodes in graph: {len(G.nodes())}")
-                # print(f"Node sizes length: {len(node_sizes)}")
-                # print(f"Node colors length: {len(node_colors)}")
-
-                # Ensure that sizes and colors match the number of nodes
-                if len(node_sizes) != len(G.nodes()) or len(node_colors) != len(G.nodes()):
-                    # print(f"Mismatch in lengths for graph {i}:")
-                    # print(f"Node sizes: {len(node_sizes)}, Node colors: {len(node_colors)}, Nodes in graph: {len(G.nodes())}")
-                    continue  # Skip drawing if there's a mismatch
-
-                # Draw the graph
-                plt.figure(figsize=(8, 8))
-                pos = nx.spring_layout(G)  # Layout for visual clarity
-                nx.draw(G, pos, with_labels=True, node_size=node_sizes, node_color=node_colors, cmap=plt.cm.Reds)
-                # plt.title(f"Graph Node Importance for Batch {batch_idx}, Graph {i}")
-                # plt.savefig(f"graph_explanation_batch_{batch_idx}_graph_{i}.png")
-                plt.show()
-            else:
-                print(f"No explanations for graph index {i}.")
-                continue  # Skip if there are no explanations for this graph
-    else:
-        print("No node attributions found in the provided dictionary.")
 
 """
 explanations/
@@ -386,32 +72,55 @@ def save_to_file(data, file_path):
         json.dump(data, f, indent=4)  # Use indent for pretty printing
     print(f"Data saved to {file_path}")
 
-def store_explanations(epoch, batch_idx, sequence_explanations, graph_explanations, expl_dir):
-    """
-    Store explanations for a given epoch and batch.
-
-    Parameters:
-    - epoch (int): The current epoch number.
-    - batch_idx (int): The index of the current batch.
-    - sequence_explanations (dict): Explanations for the sequence model.
-    - graph_explanations (dict): Explanations for the graph model.
-    - expl_dir (str): The directory where the explanations will be saved.
-    - node_attributions (dict, optional): Node attributions to save.
-    """
-    # Create the directory for the current epoch if it doesn't exist
-    epoch_dir = os.path.join(expl_dir, f'epoch_{epoch}')
-    os.makedirs(epoch_dir, exist_ok=True)
-
-    # Prepare the file path for sequence explanations
-    sequence_file_path = os.path.join(epoch_dir, f'sequence_explanations_batch_{batch_idx}.json')
-    save_to_file(sequence_explanations, sequence_file_path)
-
-    # Store graph explanations if available
-    if graph_explanations is not None:
-        node_attributions_file_path = os.path.join(epoch_dir, f'graph_node_attributions_batch_{batch_idx}.json')
-        save_to_file(graph_explanations['node_attributions'], node_attributions_file_path)
+def store_explanations(epoch, batch_idx, node_explanations, edge_explanations, expl_dir='explanations'):
+    os.makedirs(expl_dir, exist_ok=True)
     
+    for i, (nodes, edges) in enumerate(zip(node_explanations, edge_explanations)):
+        graph_data = {'nodes': [], 'edges': []}
         
+        # Store node explanations with both label and attribution score
+        for node_id, node_importance in nodes.items():
+            graph_data['nodes'].append({
+                'id': node_id,
+                'label': node_importance['label_node'],  # Use 'label_node' instead of converting dict
+                # 'attribution_score': node_importance['attribution_score']  # Store attribution score
+            })
+        
+        # Store edge explanations
+        for edge in edges:
+            graph_data['edges'].append({
+                'in_node': edge['in_node'],
+                'out_node': edge['out_node'],
+                'important_score': edge['important_score']
+            })
+        
+        # Save explanations for this batch
+        file_path = os.path.join(expl_dir, f'explanations_epoch_{epoch}_batch_{batch_idx}_graph_{i}.json')
+        with open(file_path, 'w') as f:
+            json.dump(graph_data, f, indent=4)
+
+
+def explain_and_store(epoch, batch_idx, model, outputs, sequence_inputs, node_features, graph_inputs, device, tokenizer, expl_dir):
+    """
+    Generate and store explanations for both sequence and graph outputs during training.
+    """
+    # Explain sequence outputs
+    # predicted_class_indices = outputs.argmax(dim=1).tolist()
+    predicted_class_indices = torch.argmax(outputs, dim=1).tolist()
+    sequence_explanations = explain_sequence_outputs(model.clr_model.model, sequence_inputs, predicted_class_indices, tokenizer)
+
+    # Extract the importance scores for combining with graph explanations
+    sequence_importance = [explanation[1] for explanation in sequence_explanations]  # Only use the importance scores
+    
+    # Explain graph outputs
+    if graph_inputs is not None:
+        node_explanations, edge_explanations = explain_graph_outputs(model.devign_model, outputs, graph_inputs, device, node_features)
+    else:
+        node_explanations, edge_explanations = [], []
+
+    # Store the combined explanations
+    store_explanations(epoch, batch_idx, node_explanations, edge_explanations, expl_dir)
+
 def load_explanations(epoch, batch_idx, expl_dir='explanations'):
     if epoch < 0:  # No previous explanations available if it's the first epoch
         return None
@@ -536,50 +245,65 @@ def explanation_loss(sequence_explanations, graph_explanations, model_outputs, l
     print(f'total_loss: {graph_loss}')
 
     return total_loss
-
-
-def explain_graph_outputs(model, outputs, g_batch, device):
+def explain_graph_outputs(model, outputs, g_batch, device, node_features):
     edge_explanations = []
     node_explanations = []
-    node_features = g_batch.ndata['type'].to(device) # Ensure this is the right feature tensor
-    edge_index = g_batch.edges() # This could return a tuple (src, dst)
+    node_features_type = g_batch.ndata['type'].to(device)  # Node features ('type' field)
+    edge_index = g_batch.edges()  # This returns (src, dst) as a tuple of tensors
 
     model.set_explainer_mode(True)
-    num_classes = model.num_classes  # Ensure this is set in your model
-    # Convert the edge_index components to tensors
+
     if isinstance(edge_index, tuple):
-        print(f'edge_index is a tuple')
-        src, dst = edge_index  # Unpack the source and destination
-        edge_index = torch.stack([src, dst], dim=0).to(device)  # Stack into a 2D tensor
-    else:
-        edge_index = edge_index.to(device)  # If already a tensor, just move to device
+        src, dst = edge_index
+        edge_index = torch.stack([src, dst], dim=0).to(device)
 
-    # Debugging: Check shapes
-    print(f"Node features shape: {node_features.shape}")
-    print(f"Edge index shape: {edge_index.shape}")
-
-
-    graph_explainer = DeepLIFT(model, explain_graph=False) # false because node classification
-    for i, g in enumerate(dgl.unbatch(g_batch)):
-        # print(outputs.shape) #[16,2]
-
-        # node_idx = torch.argmax(outputs[i], dim=0).item()
+    # Initialize DeepLIFT for graph explanation
+    graph_explainer = DeepLIFT(model, explain_graph=False)
+    
+    for i, g in enumerate(dgl.unbatch(g_batch)):  # Unbatch for individual graphs
+        node_idx = torch.argmax(outputs[i], dim=0).unsqueeze(0).to(device)  # Get the most likely node (optional)
         
-        # Use tensor instead of item for node_idx
-        node_idx = torch.argmax(outputs[i], dim=0).unsqueeze(0).to(device)
+        # Explain node attributions using DeepLIFT
+        results = graph_explainer(node_features_type, edge_index)  # Apply DeepLIFT on node features and edges
+        node_attributions = results.sort(descending=True).indices.cpu()  # Sort attributions in descending order
 
-        # Generate edge explanations
-        results = graph_explainer(node_features, edge_index)
+        # Map node attributions to node indices and labels (using node_features)
+        # node_expl = {idx: {'label_node': node_features[idx]}  # Store string type from node_features
+        #              for idx in range(len(node_attributions))}
 
-        node_attributions = results.sort(descending=True).indices.cpu()
 
-        # Compute node attributions from edge masks
-        # node_attribution = compute_node_attributions(edge_mask, g.edges())
-        node_explanations.append(node_attributions)
+        # Map node attributions to node indices and labels (using node_features)
+        node_expl = {}
+        for idx in range(len(node_attributions)):
+            if idx < len(node_features) and node_features[idx] is not None:  # Ensure node_features[idx] is valid
+                label_node = node_features[idx][idx]['type']
+                print(f'label_node: {label_node}')
 
-    model.set_explainer_mode(False)
+                node_expl[idx] = {'label_node': label_node}  # Store string type from node_features
 
-    return node_explanations
+        node_explanations.append(node_expl)
+
+        # Compute edge explanations based on node attributions
+        edge_expl = []
+        for src_node, dst_node in zip(src.tolist(), dst.tolist()):
+            print(f"src_node: {src_node}, dst_node: {dst_node}")
+            
+            # Use the attributions of the connected nodes to calculate edge importance
+            if src_node < len(node_attributions) and dst_node < len(node_attributions):
+                edge_importance_score = (node_attributions[src_node].item() + node_attributions[dst_node].item()) / 2.0
+            else:
+                edge_importance_score = 0  # Fallback if node indices are out of bounds
+
+            # Append edge explanation
+            edge_expl.append({
+                'in_node': src_node,
+                'out_node': dst_node,
+                'important_score': edge_importance_score
+            })
+
+        edge_explanations.append(edge_expl)
+
+    return node_explanations, edge_explanations
 
 def explain_sequence_outputs(model, sequence_inputs, predicted_class_indices, tokenizer):
     sequence_explanations = []
@@ -632,6 +356,7 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             sequence_inputs = batch['sequence_ids']
             attention_mask = batch['attention_mask']
             graph_inputs = batch['graph_features']
+            node_features = batch['node_features']
             labels = batch['label'].to(device).long()  # Ensure labels are of dtype long (for classification)
             if graph_inputs is not None:
                 # print(f"Graph inputs shape: {graph_inputs.shape}")      # Make sure this is consistent in terms of batch size
@@ -689,33 +414,7 @@ def train(args, device, train_loader, val_loader, model, optimizer, loss_functio
             optimizer.step()
             total_loss += total_loss_combined.item()
 
-
-            # Generate new sequence explanations
-            # Predict the class labels from model outputs
-            predicted_class_indices = outputs.argmax(dim=1).tolist()
-
-            # Call the sequence explanation function
-            sequence_explanations = explain_sequence_outputs(
-                model.clr_model.model, 
-                sequence_inputs, 
-                predicted_class_indices, 
-                tokenizer
-            )
-
-            # Generate new graph explanations using DeepLIFT (with node_idx based on outputs)
-            if graph_inputs is not None:
-                node_explanations = explain_graph_outputs(
-                    model.devign_model, outputs, g_batch=graph_inputs, device=device
-                )
-                graph_explanations = {
-                    'node_attributions': node_explanations  # Store node attributions here
-                }
-            else:
-                graph_explanations = None
-
-            # Assuming you have generated sequence_explanations, graph_explanations, and node_attributions
-            # store_explanations(epoch, batch_idx, sequence_explanations, graph_explanations, expl_dir, node_attributions)
-            store_explanations(epoch, batch_idx, sequence_explanations, graph_explanations, expl_dir)
+            explain_and_store(epoch, batch_idx, model, outputs, sequence_inputs, node_features, graph_inputs, device, tokenizer, expl_dir)
 
             # Print progress every 10 batches
             if batch_idx % 10 == 0:

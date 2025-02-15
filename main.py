@@ -95,6 +95,7 @@ def collate_fn(batch):
     graph_features = [item['graph_features'] for item in batch if item['graph_features'] is not None]
     labels = [item['label'] for item in batch]
     raw_codes = [item['raw_code'] for item in batch]
+    node_features = [item['node_features'] for item in batch]
 
     sequence_ids_tensor = torch.stack(sequence_ids)
     attention_masks_tensor = torch.stack(attention_masks)
@@ -110,7 +111,8 @@ def collate_fn(batch):
         'attention_mask': attention_masks_tensor,
         'graph_features': graph_features_tensor,
         'raw_code': raw_codes,
-        'label': labels_tensor
+        'label': labels_tensor,
+        'node_features': node_features
     }
 
 from torch.optim.lr_scheduler import StepLR
