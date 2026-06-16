@@ -60,6 +60,23 @@ và **chỉ đóng góp khi y_i = 1** (mẫu có lỗ hổng) — nó **đẩy �
 **Q11. L_node không ràng buộc mẫu benign (y=0) — Node Head có gán điểm cao bừa cho hàm an toàn không?**
 Đúng là **L_node chỉ giám sát mẫu dương**. Với mẫu an toàn, ràng buộc đến từ **mất mát phân loại**, từ bước **lọc dòng vô nghĩa** khi trích highlight, và từ **tầng tự xác minh bằng LLM độc lập**. Em cũng đã ghi rõ trong hạn chế rằng **chưa có negative control** (highlight ngẫu nhiên/đối kháng) để xác nhận — đó là hướng kiểm chứng tiếp theo. Em không giấu điểm này.
 
+**Q11b. AGREE 75,8% — làm sao biết LLM thực sự *kiểm chứng* chứ không chỉ *gật đầu hợp lý hóa* (rationalize) mọi thứ?**
+Đây là câu hỏi phương pháp luận đúng chỗ. Để khẳng định 75,8% có giá trị, cần một **đối chứng âm (negative control)**: đưa cho LLM các highlight **biết chắc là sai** rồi đo lại tỉ lệ AGREE. Hai loại đối chứng:
+- **Random highlights:** chọn ngẫu nhiên các nút/dòng *không* phải do GGNN chấm cao.
+- **Adversarial highlights:** cố tình chọn dòng *chắc chắn không liên quan* lỗ hổng (khai báo tầm thường, dấu ngoặc).
+
+Kỳ vọng nếu hệ thống lành mạnh:
+
+| Đầu vào | AGREE kỳ vọng |
+|---|---|
+| Highlight thật của GGNN | **Cao** (75,8% — đã đo) |
+| Random highlights (đối chứng âm) | **Thấp** |
+| Adversarial highlights (đối chứng âm) | **Rất thấp** |
+
+Nếu AGREE của nhóm đối chứng âm cũng cao ngang nhóm thật → LLM chỉ rationalize, 75,8% **mất sức nặng**. Nếu thấp rõ rệt → **chứng minh LLM thực sự phân biệt** highlight tốt/xấu.
+
+*Câu trả lời thủ sẵn:* "Em ý thức rằng AGREE 75,8% chỉ là bằng chứng đầy đủ nếu kèm **negative control** — tức kiểm chứng LLM cho điểm thấp với highlight ngẫu nhiên/đối kháng. Thí nghiệm này em **chưa kịp chạy** và đã nêu là hướng kiểm chứng tiếp theo trong phần hạn chế. Tuy nhiên em có **bằng chứng bổ trợ độc lập ở phía bộ phát hiện**: ERASER Comprehensiveness 0,076 > 0 cho thấy các dòng highlight thực sự *cần thiết* cho dự đoán hơn so với nút ngẫu nhiên — đó đã là một dạng đối chứng định lượng." → Biến điểm yếu thành thể hiện hiểu sâu phương pháp luận, thay vì lấp liếm.
+
 **Q12. Vì sao tách detector và explainer, không làm end-to-end?**
 Vì **tách biệt, không chia sẻ tham số** mới cho phép **đánh giá trung thực một cách khách quan**: mức đồng thuận giữa hai mô hình độc lập là bằng chứng thật, không phải mô hình "tự chấm điểm cho mình". Ngoài ra còn lợi về **mô-đun hóa** (thay LLM dễ dàng) và **tránh LLM bịa vị trí lỗi**. Đánh đổi là pipeline dài hơn — em chấp nhận để đổi lấy tính kiểm chứng được.
 
